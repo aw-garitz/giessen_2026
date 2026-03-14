@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 class AusfuehrungenView extends StatefulWidget {
   const AusfuehrungenView({super.key});
@@ -14,21 +15,20 @@ class AusfuehrungenView extends StatefulWidget {
 class _AusfuehrungenViewState extends State<AusfuehrungenView> {
   final supabase = Supabase.instance.client;
   final MapController _mapController = MapController();
+  final ItemScrollController _itemScrollController = ItemScrollController();
   final TextEditingController _searchController = TextEditingController();
   
-  // Daten-Listen
   List<dynamic> _allData = []; 
   List<dynamic> _filteredData = []; 
   final Set<String> _selectedIds = {}; 
   
-  // Status-Variablen
   bool _isLoading = true;
   int _selectedKW = 1;
   String _selectedKennzeichen = "Alle KFZ";
   String _selectedStadtteil = "Alle Stadtteile";
   String _selectedStatus = "Alle"; 
   String _searchQuery = "";
-  int _mapMode = 1; // 1 = Satellit (Hybrid) als Standard
+  int _mapMode = 1; 
 
   final LatLng _badKissingen = const LatLng(50.2015, 10.0765);
 
@@ -39,7 +39,6 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
     _loadData();
   }
 
-  // --- HILFSFUNKTIONEN ---
   int _getISOWeek(DateTime date) {
     int dayOfYear = int.parse(DateFormat("D").format(date));
     return ((dayOfYear - date.weekday + 10) / 7).floor();
@@ -49,34 +48,20 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
     return DateTime(2026, 1, 1).add(Duration(days: (kw - 1) * 7 - 3));
   }
 
-  // --- DATEN LADEN ---
   Future<void> _loadData() async {
     if (!mounted) return;
-    setState(() { 
-      _isLoading = true; 
-      _selectedIds.clear(); 
-    });
+    setState(() => _isLoading = true);
     try {
       final start = _getStartOfKW(_selectedKW);
       final end = start.add(const Duration(days: 6, hours: 23, minutes: 59));
 
       final res = await supabase.from('ausfuehrung').select('''
-        id, 
-        erledigt, 
-        liter_ist, 
-        geplant_am,
-        kennzeichen,
+        id, erledigt, geplant_am, kennzeichen,
         orte (
-          id, 
-          beschreibung_genau, 
-          hausnummer, 
-          latitude, 
-          longitude,
-          strassen (name, stadtteil)
+          id, beschreibung_genau, hausnummer, latitude, longitude, 
+          strassen:strasse_id (name, stadtteil)
         ), 
-        massnahmen (
-          taetigkeiten (beschreibung_kurz)
-        )
+        massnahmen (taetigkeiten (beschreibung_kurz))
       ''')
       .gte('geplant_am', start.toIso8601String())
       .lte('geplant_am', end.toIso8601String())
@@ -95,18 +80,18 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
 
   void _applyFilter() {
     setState(() {
-      _filteredData = _allData.where((item) {
+      var temp = _allData.where((item) {
+        if (item['orte'] == null || item['orte']['latitude'] == null) return false;
+
         final kfz = item['kennzeichen'] ?? "Ohne KFZ";
-        final stadtteil = item['orte']?['strassen']?['stadtteil'] ?? "Unbekannt";
-        final strasse = (item['orte']?['strassen']?['name'] ?? "").toString().toLowerCase();
-        final hnr = (item['orte']?['hausnummer'] ?? "").toString().toLowerCase();
-        final beschr = (item['orte']?['beschreibung_genau'] ?? "").toString().toLowerCase();
+        final stadtteil = item['orte']['strassen']?['stadtteil'] ?? "Unbekannt";
+        final strasse = (item['orte']['strassen']?['name'] ?? "").toString().toLowerCase();
+        final hnr = (item['orte']['hausnummer'] ?? "").toString().toLowerCase();
+        final beschr = (item['orte']['beschreibung_genau'] ?? "").toString().toLowerCase();
         final bool done = item['erledigt'] ?? false;
         
         bool matchesKfz = _selectedKennzeichen == "Alle KFZ" || kfz == _selectedKennzeichen;
         bool matchesStadtteil = _selectedStadtteil == "Alle Stadtteile" || stadtteil == _selectedStadtteil;
-        
-        // Suche erweitert auf Hausnummer und Beschreibung
         bool matchesSearch = _searchQuery.isEmpty || 
                             strasse.contains(_searchQuery.toLowerCase()) || 
                             hnr.contains(_searchQuery.toLowerCase()) || 
@@ -118,28 +103,61 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
         
         return matchesKfz && matchesStadtteil && matchesStatus && matchesSearch;
       }).toList();
+
+      temp.sort((a, b) {
+        bool aDone = a['erledigt'] ?? false;
+        bool bDone = b['erledigt'] ?? false;
+        if (aDone != bDone) return aDone ? 1 : -1;
+        String nameA = (a['orte']['strassen']?['name'] ?? a['orte']['beschreibung_genau'] ?? "").toString();
+        String nameB = (b['orte']['strassen']?['name'] ?? b['orte']['beschreibung_genau'] ?? "").toString();
+        return nameA.compareTo(nameB);
+      });
+
+      _filteredData = temp;
     });
   }
 
-  // --- ACTIONS ---
+  void _onMarkerTap(String id, LatLng point, int index) {
+    setState(() {
+      _selectedIds.clear();
+      _selectedIds.add(id);
+    });
+    _mapController.move(point, 18.0);
+    _itemScrollController.scrollTo(
+      index: index,
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeInOutCubic,
+    );
+  }
+
   Future<void> _bulkUpdate(bool markAsDone) async {
     if (_selectedIds.isEmpty) return;
-    
-    final actionText = markAsDone ? "erledigen (0 Liter)" : "auf OFFEN zurücksetzen";
+    try {
+      await supabase.from('ausfuehrung').update({'erledigt': markAsDone}).filter('id', 'in', _selectedIds.toList());
+      _selectedIds.clear();
+      await _loadData();
+    } catch (e) {
+      debugPrint("Bulk Fehler: $e");
+    }
+  }
+
+  Future<void> _toggleStatus(Map<String, dynamic> item) async {
+    final bool isDone = item['erledigt'] ?? false;
+    final ort = item['orte'];
+    final String name = ort['strassen']?['name'] ?? ort['beschreibung_genau'] ?? 'Ort';
+    final hnr = (ort['hausnummer'] == null || ort['hausnummer'] == 'null') ? "" : " ${ort['hausnummer']}";
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Sammel-Aktion"),
-        content: Text("${_selectedIds.length} Einträge wirklich $actionText?"),
+        title: Text("$name$hnr"),
+        content: Text(isDone ? "Zurück auf OFFEN setzen?" : "Als ERLEDIGT markieren?"),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Abbruch")),
           ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true), 
-            style: ElevatedButton.styleFrom(
-              backgroundColor: markAsDone ? Colors.blue : Colors.orange, 
-              foregroundColor: Colors.white
-            ),
-            child: Text(markAsDone ? "Ausführen" : "Resetten"),
+            style: ElevatedButton.styleFrom(backgroundColor: isDone ? Colors.orange : Colors.green),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(isDone ? "Reset" : "Erledigt"),
           ),
         ],
       ),
@@ -147,55 +165,14 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
 
     if (confirm == true) {
       try {
-        await supabase.from('ausfuehrung').update({
-          'erledigt': markAsDone,
-          'liter_ist': markAsDone ? 0 : null,
-          'bemerkung': markAsDone ? 'Sammelbuchung' : null
-        }).filter('id', 'in', _selectedIds.toList());
-        
+        await supabase.from('ausfuehrung').update({'erledigt': !isDone}).eq('id', item['id']);
         await _loadData();
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Einträge aktualisiert.")));
       } catch (e) {
-        debugPrint("Fehler beim Bulk-Update: $e");
+        debugPrint("Update Fehler: $e");
       }
     }
   }
 
-  Future<void> _einzelBuchung(Map<String, dynamic> item) async {
-    final controller = TextEditingController(text: item['liter_ist']?.toString() ?? "100");
-    final ort = item['orte'];
-    final hnr = (ort?['hausnummer'] == null || ort?['hausnummer'] == 'null') ? "" : " ${ort['hausnummer']}";
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text("${ort?['strassen']?['name'] ?? 'Unbekannt'}$hnr"),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: "Liter IST", suffixText: "L"),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Abbruch")),
-          ElevatedButton(
-            onPressed: () async {
-              await supabase.from('ausfuehrung').update({
-                'erledigt': true,
-                'liter_ist': double.tryParse(controller.text.replaceAll(',', '.')) ?? 0,
-              }).eq('id', item['id']);
-              if (!mounted) return;
-              Navigator.pop(ctx);
-              _loadData();
-            },
-            child: const Text("Speichern"),
-          )
-        ],
-      ),
-    );
-  }
-
-  // --- UI KOMPONENTEN ---
   @override
   Widget build(BuildContext context) {
     final kfzListe = ["Alle KFZ", ..._allData.map((e) => e['kennzeichen']?.toString()).whereType<String>().toSet()].toList()..sort();
@@ -209,15 +186,13 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
           if (_selectedIds.isNotEmpty) ...[
             ActionChip(
               backgroundColor: Colors.orange.shade700,
-              avatar: const Icon(Icons.undo, color: Colors.white, size: 16),
-              label: const Text("Reset", style: TextStyle(color: Colors.white)),
+              label: Text("Reset (${_selectedIds.length})", style: const TextStyle(color: Colors.white)),
               onPressed: () => _bulkUpdate(false),
             ),
             const SizedBox(width: 8),
             ActionChip(
               backgroundColor: Colors.blue.shade800,
-              avatar: const Icon(Icons.done_all, color: Colors.white, size: 16),
-              label: Text("${_selectedIds.length} erledigen", style: const TextStyle(color: Colors.white)),
+              label: Text("Erledigen (${_selectedIds.length})", style: const TextStyle(color: Colors.white)),
               onPressed: () => _bulkUpdate(true),
             ),
             const SizedBox(width: 8),
@@ -242,20 +217,7 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
           const SizedBox(width: 8),
           DropdownButton<int>(
             value: _selectedKW,
-            items: List.generate(52, (i) {
-              int kw = i + 1;
-              bool isCurrent = kw == currentKW;
-              return DropdownMenuItem(
-                value: kw,
-                child: Text(
-                  isCurrent ? "KW $kw (*)" : "KW $kw",
-                  style: TextStyle(
-                    fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                    color: isCurrent ? Colors.blue.shade900 : Colors.black,
-                  ),
-                ),
-              );
-            }),
+            items: List.generate(52, (i) => DropdownMenuItem(value: i + 1, child: Text("KW ${i + 1}${i + 1 == currentKW ? ' (*)' : ''}"))),
             onChanged: (v) { setState(() { _selectedKW = v!; _loadData(); }); },
           ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _loadData),
@@ -273,18 +235,8 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
                       padding: const EdgeInsets.all(10.0),
                       child: TextField(
                         controller: _searchController,
-                        decoration: InputDecoration(
-                          hintText: "Nach Straße, Hnr. oder Merkmal suchen...",
-                          prefixIcon: const Icon(Icons.search),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                        ),
-                        onChanged: (v) {
-                          setState(() {
-                            _searchQuery = v;
-                            _applyFilter();
-                          });
-                        },
+                        decoration: InputDecoration(hintText: "Suchen...", prefixIcon: const Icon(Icons.search), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+                        onChanged: (v) { _searchQuery = v; _applyFilter(); },
                       ),
                     ),
                     Expanded(child: _buildListPart()),
@@ -300,64 +252,51 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
 
   Widget _buildListPart() {
     if (_filteredData.isEmpty) return const Center(child: Text("Keine Einträge gefunden."));
-    return ListView.builder(
+    return ScrollablePositionedList.builder(
+      itemScrollController: _itemScrollController,
       itemCount: _filteredData.length,
       itemBuilder: (ctx, i) {
         final item = _filteredData[i];
-        final ort = item['orte'];
         final idStr = item['id'].toString();
         final done = item['erledigt'] ?? false;
+        final isSelected = _selectedIds.contains(idStr);
         
-        final String strasse = ort?['strassen']?['name'] ?? 'Unbekannt';
-        final String hnr = (ort?['hausnummer'] == null || ort?['hausnummer'] == 'null') ? "" : " ${ort['hausnummer']}";
-        final String stadtteil = ort?['strassen']?['stadtteil'] ?? 'Unbekannt';
-        final String beschreibung = ort?['beschreibung_genau'] ?? ''; // <--- NEU
+        final String rawStrasse = item['orte']['strassen']?['name'] ?? '';
+        final String hnr = (item['orte']['hausnummer'] == null || item['orte']['hausnummer'] == 'null') ? "" : " ${item['orte']['hausnummer']}";
+        final String beschr = item['orte']['beschreibung_genau'] ?? '';
         final String taetigkeit = item['massnahmen']?['taetigkeiten']?['beschreibung_kurz'] ?? 'Gießen';
-        final String datum = DateFormat('dd.MM.yyyy').format(DateTime.parse(item['geplant_am']));
+
+        String title = rawStrasse.isNotEmpty ? "$rawStrasse$hnr" : (beschr.isNotEmpty ? beschr : "Ort ID: $idStr");
 
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          elevation: 2,
-          color: _selectedIds.contains(idStr) ? Colors.blue.shade50 : (done ? Colors.green.shade50 : Colors.white),
+          color: isSelected ? Colors.blue.shade100 : (done ? Colors.green.shade50 : Colors.white),
+          elevation: isSelected ? 8 : 1,
+          shape: isSelected ? RoundedRectangleBorder(side: BorderSide(color: Colors.blue.shade700, width: 2), borderRadius: BorderRadius.circular(8)) : null,
           child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             leading: Checkbox(
-              value: _selectedIds.contains(idStr),
+              value: isSelected,
               onChanged: (v) => setState(() => v! ? _selectedIds.add(idStr) : _selectedIds.remove(idStr)),
             ),
-            title: Text("$strasse$hnr", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 4),
-                // Tätigkeit und Beschreibung kombiniert
-                Text("$taetigkeit | $stadtteil", style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w500)),
-                if (beschreibung.isNotEmpty) ...[
-                   const SizedBox(height: 2),
-                   Text("📍 $beschreibung", style: TextStyle(color: Colors.blueGrey.shade700, fontStyle: FontStyle.italic, fontSize: 13)),
-                ],
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(Icons.calendar_today, size: 12, color: Colors.grey),
-                    const SizedBox(width: 4),
-                    Text(datum, style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
-                    const SizedBox(width: 10),
-                    const Icon(Icons.car_repair, size: 12, color: Colors.grey),
-                    const SizedBox(width: 4),
-                    Text(item['kennzeichen'] ?? "-", style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
-                  ],
-                ),
+                if (rawStrasse.isNotEmpty && beschr.isNotEmpty) 
+                  Text(beschr, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                Text("$taetigkeit | ${DateFormat('dd.MM.').format(DateTime.parse(item['geplant_am']))} | ${item['kennzeichen'] ?? '-'}"),
               ],
             ),
             trailing: IconButton(
-              icon: Icon(done ? Icons.check_circle : Icons.water_drop, color: done ? Colors.green : Colors.red, size: 28),
-              onPressed: () => _einzelBuchung(item),
+              icon: Icon(done ? Icons.check_circle : Icons.panorama_fish_eye, color: done ? Colors.green : Colors.grey, size: 30),
+              onPressed: () => _toggleStatus(item),
             ),
             onTap: () {
-              if (ort['latitude'] != null) {
-                _mapController.move(LatLng(ort['latitude'], ort['longitude']), 17.5);
-              }
+              setState(() {
+                _selectedIds.clear();
+                _selectedIds.add(idStr);
+              });
+              _mapController.move(LatLng(item['orte']['latitude'], item['orte']['longitude']), 18.0);
             },
           ),
         );
@@ -366,44 +305,47 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
   }
 
   Widget _buildMapPart() {
+    Map<String, int> coordCounter = {};
     return Stack(
       children: [
         FlutterMap(
           mapController: _mapController,
           options: MapOptions(initialCenter: _badKissingen, initialZoom: 14.5),
           children: [
-            TileLayer(
-              urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-            ),
-            if (_mapMode == 1)
-              TileLayer(
-                urlTemplate: 'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png',
-                subdomains: const ['a', 'b', 'c', 'd'],
-              ),
-            if (_mapMode == 0)
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              ),
+            TileLayer(urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'),
+            if (_mapMode == 1) TileLayer(urlTemplate: 'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', subdomains: const ['a', 'b', 'c', 'd']),
             MarkerLayer(
-              markers: _filteredData.where((e) => e['orte']?['latitude'] != null).map((item) {
-                final ort = item['orte'];
+              markers: List.generate(_filteredData.length, (index) {
+                final item = _filteredData[index];
                 final idStr = item['id'].toString();
-                final bool isSelected = _selectedIds.contains(idStr);
                 final bool done = item['erledigt'] ?? false;
+                final bool isSelected = _selectedIds.contains(idStr);
+
+                final double baseLat = item['orte']['latitude'];
+                final double baseLng = item['orte']['longitude'];
+                final String coordKey = "$baseLat\_$baseLng";
+                
+                int count = coordCounter[coordKey] ?? 0;
+                coordCounter[coordKey] = count + 1;
+                final double finalLat = baseLat + (count * 0.0002);
+                final LatLng point = LatLng(finalLat, baseLng);
 
                 return Marker(
-                  point: LatLng(ort['latitude'], ort['longitude']),
-                  width: 45, height: 45,
+                  point: point,
+                  width: isSelected ? 70 : 50,
+                  height: isSelected ? 70 : 50,
+                  alignment: Alignment.bottomCenter,
                   child: GestureDetector(
-                    onTap: () => setState(() => isSelected ? _selectedIds.remove(idStr) : _selectedIds.add(idStr)),
+                    onTap: () => _onMarkerTap(idStr, point, index),
                     child: Icon(
-                      isSelected ? Icons.check_box : Icons.location_on,
-                      color: isSelected ? Colors.blue : (done ? Colors.green : Colors.red),
-                      size: isSelected ? 30 : 40,
+                      isSelected ? Icons.location_on : (done ? Icons.check_circle : Icons.location_on),
+                      color: isSelected ? Colors.blue.shade700 : (done ? Colors.green : Colors.red),
+                      size: isSelected ? 60 : 40,
+                      shadows: isSelected ? [const Shadow(color: Colors.black45, blurRadius: 12)] : null,
                     ),
                   ),
                 );
-              }).toList(),
+              }),
             ),
           ],
         ),

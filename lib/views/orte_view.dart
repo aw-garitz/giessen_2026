@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 class OrteView extends StatefulWidget {
   const OrteView({super.key});
@@ -13,7 +14,8 @@ class OrteView extends StatefulWidget {
 class _OrteViewState extends State<OrteView> {
   final supabase = Supabase.instance.client;
   final MapController _mapController = MapController();
-  final ScrollController _listScrollController = ScrollController();
+  final ItemScrollController _itemScrollController = ItemScrollController();
+  final ItemPositionsListener _itemPositionsListener = ItemPositionsListener.create();
   
   List<dynamic> _orte = [];
   List<dynamic> _gefilterteOrte = [];
@@ -21,14 +23,12 @@ class _OrteViewState extends State<OrteView> {
   
   final _sucheController = TextEditingController();
   bool _isLoading = true;
-  int _mapMode = 2; // Standard: Hybrid
-  LatLng? _markerVorschau; // Der blaue Punkt vom Langdruck
-  Map<String, dynamic>? _selectedItem; // Das in der Liste gewählte Objekt
+  int _mapMode = 2; 
+  LatLng? _markerVorschau; 
+  Map<String, dynamic>? _selectedItem; 
 
-  // Koordinaten für den Startpunkt (Bad Kissingen)
   final LatLng _badKissingenZentrum = const LatLng(50.1992, 10.0781);
 
-  // Karten-Layer URLs
   final String _streetUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
   final String _satelliteUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
   final String _labelUrl = 'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png';
@@ -42,14 +42,11 @@ class _OrteViewState extends State<OrteView> {
 
   @override
   void dispose() {
-    _listScrollController.dispose();
     _sucheController.dispose();
     super.dispose();
   }
 
-  // --- DATEN LADEN ---
   Future<void> _ladeBasisDaten() async {
-    double currentOffset = _listScrollController.hasClients ? _listScrollController.offset : 0;
     setState(() => _isLoading = true);
     try {
       final strassenData = await supabase.from('strassen').select('id, name').order('name');
@@ -62,6 +59,7 @@ class _OrteViewState extends State<OrteView> {
         int comp = strasseA.compareTo(strasseB);
         if (comp != 0) return comp;
         
+        // Numerische Sortierung für Hausnummern falls möglich
         String hnrA = (a['hausnummer'] ?? '');
         String hnrB = (b['hausnummer'] ?? '');
         return hnrA.compareTo(hnrB);
@@ -72,13 +70,6 @@ class _OrteViewState extends State<OrteView> {
         _orte = sortierteOrte;
         _gefilterteOrte = sortierteOrte;
         _isLoading = false;
-      });
-      _filtereListe();
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_listScrollController.hasClients) {
-          _listScrollController.jumpTo(currentOffset);
-        }
       });
     } catch (e) {
       debugPrint("Ladefehler: $e");
@@ -92,7 +83,9 @@ class _OrteViewState extends State<OrteView> {
       _gefilterteOrte = _orte.where((o) {
         final strasse = (o['strassen']?['name'] ?? '').toString().toLowerCase();
         final beschr = (o['beschreibung_genau'] ?? '').toString().toLowerCase();
-        return strasse.contains(query) || beschr.contains(query);
+        final stadtteil = (o['strassen']?['stadtteil'] ?? '').toString().toLowerCase();
+        final hnr = (o['hausnummer'] ?? '').toString().toLowerCase();
+        return strasse.contains(query) || beschr.contains(query) || stadtteil.contains(query) || hnr.contains(query);
       }).toList();
     });
   }
@@ -102,11 +95,23 @@ class _OrteViewState extends State<OrteView> {
     return o['latitude'] != null && o['latitude'] != 0 && o['longitude'] != null && o['longitude'] != 0;
   }
 
-  // --- SPEICHER-DIALOG ---
+  void _fokussiereOrt(Map<String, dynamic> o, int index) {
+    setState(() => _selectedItem = o);
+    if (_hatGps(o)) {
+      _mapController.move(LatLng(o['latitude'], o['longitude']), 18);
+    }
+    if (_itemScrollController.isAttached) {
+      _itemScrollController.scrollTo(
+        index: index,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOutCubic,
+        alignment: 0.1, // Scrollt so, dass das Item oben im Sichtfeld ist
+      );
+    }
+  }
+
   void _zeigeOrteDialog({Map<String, dynamic>? editItem}) {
     final bool isEdit = editItem != null;
-    
-    // LOGIK: Blauer Marker hat Priorität (für Verfeinerung), sonst nimm bestehendes GPS
     LatLng? positionFuerSpeichern = _markerVorschau ?? 
         (isEdit && _hatGps(editItem) ? LatLng(editItem['latitude'], editItem['longitude']) : null);
 
@@ -141,7 +146,7 @@ class _OrteViewState extends State<OrteView> {
                     color: Colors.orange.shade100,
                     child: const Padding(
                       padding: EdgeInsets.all(12.0),
-                      child: Text("Keine GPS-Daten! Setze erst einen blauen Marker per Langdruck auf die Karte.",
+                      child: Text("Keine GPS-Daten! Setze erst einen Marker per Langdruck auf die Karte.",
                           style: TextStyle(fontSize: 12, color: Colors.orange)),
                     ),
                   ),
@@ -216,13 +221,11 @@ class _OrteViewState extends State<OrteView> {
     );
   }
 
-  // --- MAIN BUILD ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Row(
         children: [
-          // SIDEBAR
           Container(
             width: 400,
             decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)]),
@@ -234,7 +237,6 @@ class _OrteViewState extends State<OrteView> {
               ],
             ),
           ),
-          // MAP
           Expanded(
             child: Stack(
               children: [
@@ -251,22 +253,24 @@ class _OrteViewState extends State<OrteView> {
                     if (_mapMode == 2) TileLayer(urlTemplate: _labelUrl, subdomains: const ['a', 'b', 'c', 'd']),
                     MarkerLayer(
                       markers: [
-                        // Gespeicherte Marker (Rot / Blau bei Auswahl)
-                        ..._orte.where((o) => _hatGps(o)).map((o) {
+                        ..._gefilterteOrte.asMap().entries.where((e) => _hatGps(e.value)).map((entry) {
+                          final int idx = entry.key;
+                          final dynamic o = entry.value;
                           final bool isSelected = _selectedItem != null && _selectedItem!['id'] == o['id'];
                           return Marker(
                             point: LatLng(o['latitude'], o['longitude']),
-                            width: isSelected ? 70 : 40, 
-                            height: isSelected ? 70 : 40,
+                            width: isSelected ? 80 : 40, 
+                            height: isSelected ? 80 : 40,
+                            alignment: Alignment.bottomCenter,
                             child: GestureDetector(
-                              onTap: () => _fokussiereOrt(o),
+                              onTap: () => _fokussiereOrt(o, idx),
                               child: Icon(Icons.location_on, 
                                   color: isSelected ? Colors.blue : Colors.red, 
-                                  size: isSelected ? 55 : 30),
+                                  size: isSelected ? 65 : 30,
+                                  shadows: isSelected ? [const Shadow(color: Colors.black45, blurRadius: 10)] : null),
                             ),
                           );
                         }),
-                        // Vorschau Marker (Blau/Hellblau)
                         if (_markerVorschau != null)
                           Marker(
                             point: _markerVorschau!,
@@ -328,47 +332,58 @@ class _OrteViewState extends State<OrteView> {
             child: TextField(
               controller: _sucheController, 
               decoration: InputDecoration(
-                hintText: "Suchen...", prefixIcon: const Icon(Icons.search),
+                hintText: "Nach Straße, Baum oder Stadtteil suchen...", prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true, fillColor: Colors.grey[50]
               )
             )
           ),
           Expanded(
-            child: ListView.builder(
-              controller: _listScrollController, 
+            child: ScrollablePositionedList.builder(
+              itemScrollController: _itemScrollController,
+              itemPositionsListener: _itemPositionsListener,
               itemCount: _gefilterteOrte.length,
               itemBuilder: (ctx, i) {
                 final o = _gefilterteOrte[i];
                 final bool gpsDa = _hatGps(o);
                 final bool isSelected = _selectedItem != null && _selectedItem!['id'] == o['id'];
-                final name = "${o['strassen']?['name'] ?? ''} ${o['hausnummer'] ?? ''}";
                 
+                final strasse = o['strassen']?['name'] ?? 'Unbekannte Straße';
+                final stadtteil = o['strassen']?['stadtteil'] ?? '';
+                final hnr = o['hausnummer'] ?? '';
+                final beschr = o['beschreibung_genau'] ?? '';
+
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  elevation: isSelected ? 6 : 0,
+                  elevation: isSelected ? 8 : 1,
                   color: isSelected ? Colors.blue.shade50 : Colors.white,
                   shape: RoundedRectangleBorder(
-                    side: BorderSide(color: isSelected ? Colors.blue : (gpsDa ? Colors.grey[200]! : Colors.orange.shade200), width: isSelected ? 2 : 1), 
-                    borderRadius: BorderRadius.circular(8)
+                    side: BorderSide(color: isSelected ? Colors.blue.shade700 : (gpsDa ? Colors.transparent : Colors.orange.shade300), width: 2), 
+                    borderRadius: BorderRadius.circular(10)
                   ),
                   child: ListTile(
-                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     leading: CircleAvatar(
-                      backgroundColor: gpsDa ? (isSelected ? Colors.blue : Colors.green.shade50) : Colors.grey.shade100,
+                      backgroundColor: gpsDa ? (isSelected ? Colors.blue : Colors.green.shade50) : Colors.orange.shade50,
                       child: Icon(gpsDa ? Icons.location_on : Icons.location_off, 
-                                  color: gpsDa ? (isSelected ? Colors.white : Colors.green) : Colors.grey, size: 18),
+                                  color: gpsDa ? (isSelected ? Colors.white : Colors.green) : Colors.orange, size: 20),
                     ),
-                    title: Text(name, style: TextStyle(fontWeight: FontWeight.bold, color: gpsDa ? Colors.black : Colors.grey[700])),
-                    subtitle: Text(o['beschreibung_genau'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    title: Text("$strasse $hnr", style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (beschr.isNotEmpty) Text(beschr, style: const TextStyle(fontStyle: FontStyle.italic)),
+                        if (stadtteil.isNotEmpty) Text(stadtteil, style: TextStyle(color: Colors.grey[600], fontSize: 11)),
+                      ],
+                    ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        IconButton(icon: const Icon(Icons.edit, color: Colors.blue, size: 20), onPressed: () => _zeigeOrteDialog(editItem: o)),
-                        IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20), onPressed: () => _loescheOrt(o['id'], name)),
+                        IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _zeigeOrteDialog(editItem: o)),
+                        IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () => _loescheOrt(o['id'], "$strasse $hnr")),
                       ],
                     ),
-                    onTap: () => _fokussiereOrt(o),
+                    onTap: () => _fokussiereOrt(o, i),
                   ),
                 );
               },
@@ -379,28 +394,27 @@ class _OrteViewState extends State<OrteView> {
     );
   }
 
-  void _fokussiereOrt(Map<String, dynamic> o) {
-    setState(() => _selectedItem = o);
-    if (_hatGps(o)) {
-      _mapController.move(LatLng(o['latitude'], o['longitude']), 18);
-    }
-  }
-
   Future<void> _loescheOrt(dynamic id, String name) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Löschen?"),
-        content: Text("'$name' wirklich entfernen?"),
+        title: const Text("Ort löschen?"),
+        content: Text("Möchtest du '$name' wirklich permanent entfernen?"),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Abbruch")),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Löschen", style: TextStyle(color: Colors.red))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true), 
+            child: const Text("Löschen")
+          ),
         ],
       ),
     );
     if (confirm == true) {
-      await supabase.from('orte').delete().eq('id', id);
-      _ladeBasisDaten();
+      try {
+        await supabase.from('orte').delete().eq('id', id);
+        _ladeBasisDaten();
+      } catch (e) { debugPrint("Löschfehler: $e"); }
     }
   }
 }
