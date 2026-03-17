@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:giessen_app/views/fahrzeug_tour_view.dart'; 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-// Deine Dateimporte
+// Deine Desktop/Web Importe
 import 'login_screen.dart';
 import 'admin_desktop_screen.dart'; 
-      
+
+// Deine Mobile Importe
+// Falls deine mobile Hauptansicht MobileMainView heißt:
+import 'mobil/mobile_main_view.dart'; 
+// Falls du den FahrzeugTourScreen als Zwischenschritt nutzt:
+import 'views/fahrzeug_tour_view.dart'; 
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -85,10 +89,12 @@ class _AuthCheckState extends State<AuthCheck> {
 
     // 2. Eingeloggt -> Weiche
     if (kIsWeb) {
+      // Browser-Ansicht (Admin)
       return const AdminDesktopScreen();
     } else {
-      // GEÄNDERT: Mobile Nutzer starten jetzt in der Tour-Übersicht
-      return const FahrzeugTourScreen(); 
+      // Mobile-Ansicht (Fahrer)
+      // Hier kannst du entscheiden: Direkt MobileMainView oder FahrzeugTourScreen
+      return const MobileMainView(); 
     }
   }
 }
