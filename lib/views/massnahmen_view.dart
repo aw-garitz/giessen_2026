@@ -3,7 +3,6 @@ import 'package:giessen_app/qr_pdf_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
-// WICHTIG: Importiere deine Logik-Datei
 import 'package:giessen_app/funktionen/fn_allgemein.dart'; 
 
 class MassnahmenView extends StatefulWidget {
@@ -143,7 +142,13 @@ class _MassnahmenViewState extends State<MassnahmenView> {
     String qrCodeId = item?['qr_code_id'] ?? const Uuid().v4(); 
     DateTime selectedDate = item != null ? DateTime.parse(item['start_datum']) : DateTime.now();
 
-    final startController = TextEditingController(text: DateFormat('dd.MM.yyyy').format(selectedDate));
+    final startController = TextEditingController(
+      text: DateFormat('dd.MM.yyyy').format(selectedDate),
+    );
+    // NEU: Auftragsnummer Controller
+    final auftragnummerController = TextEditingController(
+      text: item?['auftragsnummer'] ?? '',
+    );
 
     showDialog(
       context: context,
@@ -210,6 +215,15 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                     }
                   },
                 ),
+                // NEU: Auftragsnummer
+                const SizedBox(height: 8),
+                TextField(
+                  controller: auftragnummerController,
+                  decoration: const InputDecoration(
+                    labelText: "Auftragsnummer",
+                    suffixIcon: Icon(Icons.assignment),
+                  ),
+                ),
               ],
             ),
           ),
@@ -230,34 +244,32 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                     'kennzeichen': selectedKennzeichen,
                     'qr_code_id': qrCodeId,
                     'start_datum': DateFormat('yyyy-MM-dd').format(selectedDate),
+                    // NEU: Auftragsnummer speichern
+                    'auftragsnummer': auftragnummerController.text.trim().isEmpty
+                        ? null
+                        : auftragnummerController.text.trim(),
                   };
 
                   String mId;
                   if (isEdit) {
                     mId = item['id'].toString();
-                    // 1. Zuerst alle alten offenen Termine löschen (Reset der Planung)
                     await supabase.from('ausfuehrung').delete()
                         .eq('massnahme_id', mId).eq('erledigt', false);
-                    // 2. Stammdaten aktualisieren
                     await supabase.from('massnahmen').update(massnahmeData).eq('id', mId);
                   } else {
-                    // 1. Neue Maßnahme anlegen
                     final res = await supabase.from('massnahmen').insert(massnahmeData).select().single();
                     mId = res['id'].toString();
                   }
 
-                  // --- NEUE SAISON-PLANUNGSLOGIK START ---
                   final int jahr = selectedDate.year;
                   final DateTime saisonEnde = DateTime(jahr, 11, 3, 23, 59);
                   
-                  // Tätigkeit laden, um das Intervall zu kennen
                   final tatInfo = _taetigkeiten.firstWhere((t) => t['id'] == selectedTaetigkeitId);
                   final int intervall = tatInfo['intervall_tage'] ?? 7;
 
                   List<Map<String, dynamic>> neueTermine = [];
                   DateTime naechsterTermin = selectedDate;
 
-                  // Alle Termine vom Startdatum bis zum Saisonende generieren
                   while (naechsterTermin.isBefore(saisonEnde) || naechsterTermin.isAtSameMomentAs(saisonEnde)) {
                     neueTermine.add({
                       'massnahme_id': mId,
@@ -271,7 +283,6 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                   if (neueTermine.isNotEmpty) {
                     await supabase.from('ausfuehrung').insert(neueTermine);
                   }
-                  // --- NEUE SAISON-PLANUNGSLOGIK ENDE ---
 
                   if (mounted) {
                     Navigator.of(ctx).pop();
@@ -310,7 +321,6 @@ class _MassnahmenViewState extends State<MassnahmenView> {
 
   @override
   Widget build(BuildContext context) {
-    // ... restlicher Build-Code bleibt gleich wie in deinem Original ...
     return Scaffold(
       body: Column(
         children: [
@@ -388,6 +398,12 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text("${m['taetigkeiten']?['beschreibung_kurz']}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                            // NEU: Auftragsnummer anzeigen wenn vorhanden
+                            if (m['auftragsnummer'] != null && m['auftragsnummer'].toString().isNotEmpty)
+                              Text(
+                                "Auftrag: ${m['auftragsnummer']}",
+                                style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
+                              ),
                             Text(
                               hatRealesEnde 
                                 ? "Abschluss der Maßnahme: ${DateFormat('dd.MM.yyyy').format(DateTime.parse(m['reales_end_datum']))}"

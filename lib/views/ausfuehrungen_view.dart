@@ -4,8 +4,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
-// WICHTIG: Pfad zu deiner Logik-Datei prüfen!
-import 'package:giessen_app/funktionen/fn_allgemein.dart'; 
+import 'package:giessen_app/funktionen/fn_allgemein.dart';
 
 class AusfuehrungenView extends StatefulWidget {
   const AusfuehrungenView({super.key});
@@ -19,18 +18,18 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
   final MapController _mapController = MapController();
   final ItemScrollController _itemScrollController = ItemScrollController();
   final TextEditingController _searchController = TextEditingController();
-  
-  List<dynamic> _allData = []; 
-  List<dynamic> _filteredData = []; 
-  final Set<String> _selectedIds = {}; 
-  
+
+  List<dynamic> _allData = [];
+  List<dynamic> _filteredData = [];
+  final Set<String> _selectedIds = {};
+
   bool _isLoading = true;
   int _selectedKW = 1;
   String _selectedKennzeichen = "Alle KFZ";
   String _selectedStadtteil = "Alle Stadtteile";
-  String _selectedStatus = "Alle"; 
+  String _selectedStatus = "Alle";
   String _searchQuery = "";
-  int _mapMode = 1; 
+  int _mapMode = 1;
 
   final LatLng _badKissingen = const LatLng(50.2015, 10.0765);
 
@@ -47,7 +46,6 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
   }
 
   DateTime _getStartOfKW(int kw) {
-    // Bezug auf das aktuelle Jahr 2026
     return DateTime(2026, 1, 1).add(Duration(days: (kw - 1) * 7 - 3));
   }
 
@@ -58,22 +56,22 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
       final start = _getStartOfKW(_selectedKW);
       final end = start.add(const Duration(days: 6, hours: 23, minutes: 59));
 
-      // Erweiterte Abfrage, um die Intervall-Tage für die Neuplanung parat zu haben
       final res = await supabase.from('ausfuehrung').select('''
         id, erledigt, geplant_am, kennzeichen, massnahme_id,
         orte (
-          id, beschreibung_genau, hausnummer, latitude, longitude, 
+          id, beschreibung_genau, hausnummer, latitude, longitude,
           strassen:strasse_id (name, stadtteil)
-        ), 
+        ),
         massnahmen (
           id,
+          auftragsnummer,
           taetigkeiten (beschreibung_kurz, intervall_tage)
         )
       ''')
-      .gte('geplant_am', start.toIso8601String())
-      .lte('geplant_am', end.toIso8601String())
-      .order('geplant_am');
-      
+          .gte('geplant_am', start.toIso8601String())
+          .lte('geplant_am', end.toIso8601String())
+          .order('geplant_am');
+
       setState(() {
         _allData = res as List<dynamic>;
         _applyFilter();
@@ -89,25 +87,23 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
     setState(() {
       var temp = _allData.where((item) {
         if (item['orte'] == null) return false;
-
         final kfz = item['kennzeichen'] ?? "Ohne KFZ";
         final stadtteil = item['orte']['strassen']?['stadtteil'] ?? "Unbekannt";
         final strasse = (item['orte']['strassen']?['name'] ?? "").toString().toLowerCase();
         final hnr = (item['orte']['hausnummer'] ?? "").toString().toLowerCase();
         final beschr = (item['orte']['beschreibung_genau'] ?? "").toString().toLowerCase();
         final bool done = item['erledigt'] ?? false;
-        
+
         bool matchesKfz = _selectedKennzeichen == "Alle KFZ" || kfz == _selectedKennzeichen;
         bool matchesStadtteil = _selectedStadtteil == "Alle Stadtteile" || stadtteil == _selectedStadtteil;
-        bool matchesSearch = _searchQuery.isEmpty || 
-                            strasse.contains(_searchQuery.toLowerCase()) || 
-                            hnr.contains(_searchQuery.toLowerCase()) || 
-                            beschr.contains(_searchQuery.toLowerCase());
-        
+        bool matchesSearch = _searchQuery.isEmpty ||
+            strasse.contains(_searchQuery.toLowerCase()) ||
+            hnr.contains(_searchQuery.toLowerCase()) ||
+            beschr.contains(_searchQuery.toLowerCase());
         bool matchesStatus = true;
         if (_selectedStatus == "Offen") matchesStatus = !done;
         if (_selectedStatus == "Erledigt") matchesStatus = done;
-        
+
         return matchesKfz && matchesStadtteil && matchesStatus && matchesSearch;
       }).toList();
 
@@ -137,44 +133,32 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
     );
   }
 
-  // --- NEUE LOGIK FÜR MASSEN-UPDATE ---
   Future<void> _bulkUpdate(bool markAsDone) async {
     if (_selectedIds.isEmpty) return;
-    
-    // UI Feedback: Ladeanzeige starten
     setState(() => _isLoading = true);
-
     try {
       for (var id in _selectedIds) {
-        // Das entsprechende Item in der Liste finden
         final item = _allData.firstWhere((e) => e['id'].toString() == id);
-        
         if (markAsDone) {
-          // KFZ-Übergabe: Wenn "Alle KFZ" gewählt ist, nutzen wir null/Standard
           String? kfz = _selectedKennzeichen == "Alle KFZ" ? null : _selectedKennzeichen;
           await GiesAppLogik.erledigenUndPlanen(item, kfz: kfz);
         } else {
           await GiesAppLogik.resetToLastStatus(item);
         }
       }
-      
       _selectedIds.clear();
-      await _loadData(); // Liste neu laden, um Änderungen zu sehen
+      await _loadData();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("${markAsDone ? 'Erledigt' : 'Reset'} für ${_selectedIds.length} Orte durchgeführt."))
-        );
+            SnackBar(content: Text("${markAsDone ? 'Erledigt' : 'Reset'} für ${_selectedIds.length} Orte durchgeführt.")));
       }
     } catch (e) {
       debugPrint("Bulk Fehler: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Fehler beim Massen-Update: $e")));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Fehler: $e")));
       setState(() => _isLoading = false);
     }
   }
 
-  // --- NEUE LOGIK FÜR EINZEL-UPDATE ---
   Future<void> _toggleStatus(Map<String, dynamic> item) async {
     final bool isDone = item['erledigt'] ?? false;
     final ort = item['orte'];
@@ -185,9 +169,9 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text("$name$hnr"),
-        content: Text(isDone 
-          ? "Status auf OFFEN setzen und Saison-Planung wiederherstellen?" 
-          : "Als ERLEDIGT markieren und restliche Saison neu berechnen?"),
+        content: Text(isDone
+            ? "Status auf OFFEN setzen und Saison-Planung wiederherstellen?"
+            : "Als ERLEDIGT markieren und restliche Saison neu berechnen?"),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Abbruch")),
           ElevatedButton(
@@ -217,6 +201,127 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
     }
   }
 
+  // Hilfsmethode: einheitliches Filter-Dropdown
+  Widget _filterDropdown<T>({
+    required String label,
+    required T value,
+    required List<T> items,
+    required String Function(T) itemLabel,
+    required void Function(T) onChanged,
+    IconData? icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 16, color: Colors.blueGrey),
+            const SizedBox(width: 6),
+          ],
+          Text(label, style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
+          const SizedBox(width: 4),
+          DropdownButtonHideUnderline(
+            child: DropdownButton<T>(
+              value: value,
+              isDense: true,
+              style: const TextStyle(fontSize: 13, color: Colors.black87, fontWeight: FontWeight.w500),
+              items: items.map((item) => DropdownMenuItem<T>(
+                value: item,
+                child: Text(itemLabel(item)),
+              )).toList(),
+              onChanged: (v) { if (v != null) onChanged(v); },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterBar(List<String> kfzListe, List<String> stadtteilListe, int currentKW) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            // Bulk-Aktionen wenn Auswahl aktiv
+            if (_selectedIds.isNotEmpty) ...[
+              ActionChip(
+                avatar: const Icon(Icons.undo, size: 16, color: Colors.white),
+                backgroundColor: Colors.orange.shade700,
+                label: Text("Reset (${_selectedIds.length})", style: const TextStyle(color: Colors.white, fontSize: 12)),
+                onPressed: () => _bulkUpdate(false),
+              ),
+              const SizedBox(width: 6),
+              ActionChip(
+                avatar: const Icon(Icons.check, size: 16, color: Colors.white),
+                backgroundColor: Colors.blue.shade800,
+                label: Text("Erledigen (${_selectedIds.length})", style: const TextStyle(color: Colors.white, fontSize: 12)),
+                onPressed: () => _bulkUpdate(true),
+              ),
+              const SizedBox(width: 12),
+              const SizedBox(height: 32, child: VerticalDivider(width: 1)),
+              const SizedBox(width: 12),
+            ],
+
+            // Filter-Dropdowns
+            _filterDropdown<String>(
+              label: "Status",
+              icon: Icons.filter_list,
+              value: _selectedStatus,
+              items: ["Alle", "Offen", "Erledigt"],
+              itemLabel: (s) => s,
+              onChanged: (v) => setState(() { _selectedStatus = v; _applyFilter(); }),
+            ),
+            const SizedBox(width: 8),
+            _filterDropdown<String>(
+              label: "Stadtteil",
+              icon: Icons.location_city,
+              value: _selectedStadtteil,
+              items: stadtteilListe,
+              itemLabel: (s) => s,
+              onChanged: (v) => setState(() { _selectedStadtteil = v; _applyFilter(); }),
+            ),
+            const SizedBox(width: 8),
+            _filterDropdown<String>(
+              label: "Fahrzeug",
+              icon: Icons.local_shipping,
+              value: _selectedKennzeichen,
+              items: kfzListe,
+              itemLabel: (k) => k,
+              onChanged: (v) => setState(() { _selectedKennzeichen = v; _applyFilter(); }),
+            ),
+            const SizedBox(width: 8),
+            _filterDropdown<int>(
+              label: "KW",
+              icon: Icons.calendar_today,
+              value: _selectedKW,
+              items: List.generate(52, (i) => i + 1),
+              itemLabel: (kw) => "KW $kw${kw == currentKW ? ' ✦' : ''}",
+              onChanged: (v) => setState(() { _selectedKW = v; _loadData(); }),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.blueGrey),
+              tooltip: "Neu laden",
+              onPressed: _loadData,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final kfzListe = ["Alle KFZ", ..._allData.map((e) => e['kennzeichen']?.toString()).whereType<String>().toSet()].toList()..sort();
@@ -226,75 +331,45 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Gießplan 2026"),
-        actions: [
-          if (_selectedIds.isNotEmpty) ...[
-            ActionChip(
-              backgroundColor: Colors.orange.shade700,
-              label: Text("Reset (${_selectedIds.length})", style: const TextStyle(color: Colors.white)),
-              onPressed: () => _bulkUpdate(false),
-            ),
-            const SizedBox(width: 8),
-            ActionChip(
-              backgroundColor: Colors.blue.shade800,
-              label: Text("Erledigen (${_selectedIds.length})", style: const TextStyle(color: Colors.white)),
-              onPressed: () => _bulkUpdate(true),
-            ),
-            const SizedBox(width: 8),
-          ],
-          DropdownButton<String>(
-            value: _selectedStatus,
-            items: ["Alle", "Offen", "Erledigt"].map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
-            onChanged: (v) { setState(() { _selectedStatus = v!; _applyFilter(); }); },
-          ),
-          const SizedBox(width: 8),
-          DropdownButton<String>(
-            value: _selectedStadtteil,
-            items: stadtteilListe.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
-            onChanged: (v) { setState(() { _selectedStadtteil = v!; _applyFilter(); }); },
-          ),
-          const SizedBox(width: 8),
-          DropdownButton<String>(
-            value: _selectedKennzeichen,
-            items: kfzListe.map((k) => DropdownMenuItem(value: k, child: Text(k))).toList(),
-            onChanged: (v) { setState(() { _selectedKennzeichen = v!; _applyFilter(); }); },
-          ),
-          const SizedBox(width: 8),
-          DropdownButton<int>(
-            value: _selectedKW,
-            items: List.generate(52, (i) => DropdownMenuItem(value: i + 1, child: Text("KW ${i + 1}${i + 1 == currentKW ? ' (*)' : ''}"))),
-            onChanged: (v) { setState(() { _selectedKW = v!; _loadData(); }); },
-          ),
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadData),
-        ],
       ),
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
-        : Row(
-            children: [
-              Expanded(
-                flex: 4, 
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(10.0),
-                      child: TextField(
-                        controller: _searchController,
-                        decoration: InputDecoration(
-                          hintText: "Suchen...", 
-                          prefixIcon: const Icon(Icons.search), 
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Row(
+              children: [
+                // LINKE LISTE
+                Expanded(
+                  flex: 3,
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(10.0),
+                        child: TextField(
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            hintText: "Suchen...",
+                            prefixIcon: const Icon(Icons.search),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onChanged: (v) { _searchQuery = v; _applyFilter(); },
                         ),
-                        onChanged: (v) { _searchQuery = v; _applyFilter(); },
                       ),
-                    ),
-                    Expanded(child: _buildListPart()),
-                  ],
+                      Expanded(child: _buildListPart()),
+                    ],
+                  ),
                 ),
-              ),
-              const VerticalDivider(width: 1),
-              Expanded(flex: 6, child: _buildMapPart()),
-            ],
-          ),
+                const VerticalDivider(width: 1),
+                // RECHTE KARTE mit Filterleiste
+                Expanded(
+                  flex: 6,
+                  child: Column(
+                    children: [
+                      _buildFilterBar(kfzListe, stadtteilListe, currentKW),
+                      Expanded(child: _buildMapPart()),
+                    ],
+                  ),
+                ),
+              ],
+            ),
     );
   }
 
@@ -308,19 +383,20 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
         final idStr = item['id'].toString();
         final done = item['erledigt'] ?? false;
         final isSelected = _selectedIds.contains(idStr);
-        
+
         final String rawStrasse = item['orte']['strassen']?['name'] ?? '';
         final String hnr = (item['orte']['hausnummer'] == null || item['orte']['hausnummer'] == 'null') ? "" : " ${item['orte']['hausnummer']}";
         final String beschr = item['orte']['beschreibung_genau'] ?? '';
         final String taetigkeit = item['massnahmen']?['taetigkeiten']?['beschreibung_kurz'] ?? 'Gießen';
-
         String title = rawStrasse.isNotEmpty ? "$rawStrasse$hnr" : (beschr.isNotEmpty ? beschr : "Ort ID: $idStr");
 
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           color: isSelected ? Colors.blue.shade100 : (done ? Colors.green.shade50 : Colors.white),
           elevation: isSelected ? 8 : 1,
-          shape: isSelected ? RoundedRectangleBorder(side: BorderSide(color: Colors.blue.shade700, width: 2), borderRadius: BorderRadius.circular(8)) : null,
+          shape: isSelected
+              ? RoundedRectangleBorder(side: BorderSide(color: Colors.blue.shade700, width: 2), borderRadius: BorderRadius.circular(8))
+              : null,
           child: ListTile(
             leading: Checkbox(
               value: isSelected,
@@ -330,9 +406,14 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (rawStrasse.isNotEmpty && beschr.isNotEmpty) 
+                if (rawStrasse.isNotEmpty && beschr.isNotEmpty)
                   Text(beschr, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
                 Text("$taetigkeit | ${DateFormat('dd.MM.').format(DateTime.parse(item['geplant_am']))} | ${item['kennzeichen'] ?? '-'}"),
+                if ((item['massnahmen']?['auftragsnummer'] ?? '').toString().isNotEmpty)
+  Text(
+    "Auftrag: ${item['massnahmen']?['auftragsnummer']}",
+    style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
+  ),
               ],
             ),
             trailing: IconButton(
@@ -361,7 +442,8 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
           options: MapOptions(initialCenter: _badKissingen, initialZoom: 14.5),
           children: [
             TileLayer(urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'),
-            if (_mapMode == 1) TileLayer(urlTemplate: 'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', subdomains: const ['a', 'b', 'c', 'd']),
+            if (_mapMode == 1)
+              TileLayer(urlTemplate: 'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', subdomains: const ['a', 'b', 'c', 'd']),
             MarkerLayer(
               markers: List.generate(_filteredData.length, (index) {
                 final item = _filteredData[index];
@@ -371,8 +453,8 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
 
                 final double baseLat = item['orte']['latitude'];
                 final double baseLng = item['orte']['longitude'];
-                final String coordKey = "$baseLat\_$baseLng";
-                
+                final String coordKey = "${baseLat}_$baseLng";
+
                 int count = coordCounter[coordKey] ?? 0;
                 coordCounter[coordKey] = count + 1;
                 final double finalLat = baseLat + (count * 0.0002);
