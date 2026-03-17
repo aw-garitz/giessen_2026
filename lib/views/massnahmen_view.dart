@@ -3,7 +3,7 @@ import 'package:giessen_app/qr_pdf_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
-import 'package:giessen_app/funktionen/fn_allgemein.dart'; 
+import 'package:giessen_app/funktionen/fn_allgemein.dart';
 
 class MassnahmenView extends StatefulWidget {
   const MassnahmenView({super.key});
@@ -15,13 +15,13 @@ class MassnahmenView extends StatefulWidget {
 class _MassnahmenViewState extends State<MassnahmenView> {
   final supabase = Supabase.instance.client;
   final ScrollController _scrollController = ScrollController();
-  
-  List<dynamic> _allMassnahmen = [];      
-  List<dynamic> _filteredMassnahmen = []; 
+
+  List<dynamic> _allMassnahmen = [];
+  List<dynamic> _filteredMassnahmen = [];
   List<dynamic> _orte = [];
   List<dynamic> _taetigkeiten = [];
   List<dynamic> _fahrzeuge = [];
-  
+
   bool _isLoading = true;
   final TextEditingController _searchController = TextEditingController();
 
@@ -40,7 +40,7 @@ class _MassnahmenViewState extends State<MassnahmenView> {
 
   Future<void> _loadAllData() async {
     if (!mounted) return;
-    
+
     double currentOffset = 0;
     if (_scrollController.hasClients) {
       currentOffset = _scrollController.offset;
@@ -50,8 +50,8 @@ class _MassnahmenViewState extends State<MassnahmenView> {
     try {
       final results = await Future.wait([
         supabase.from('massnahmen').select('''
-          *, 
-          orte(id, beschreibung_genau, hausnummer, strassen(name)), 
+          *,
+          orte(id, beschreibung_genau, hausnummer, strassen(name)),
           taetigkeiten(*)
         '''),
         supabase.from('orte').select('id, beschreibung_genau, hausnummer, strassen(name)'),
@@ -66,14 +66,14 @@ class _MassnahmenViewState extends State<MassnahmenView> {
           String nameB = b['orte']?['strassen']?['name'] ?? '';
           return nameA.toLowerCase().compareTo(nameB.toLowerCase());
         });
-        
+
         _filteredMassnahmen = List.from(_allMassnahmen);
         _orte = results[1];
         _taetigkeiten = results[2];
         _fahrzeuge = results[3];
         _isLoading = false;
       });
-      
+
       _filterList(_searchController.text);
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -81,7 +81,6 @@ class _MassnahmenViewState extends State<MassnahmenView> {
           _scrollController.jumpTo(currentOffset);
         }
       });
-
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -96,9 +95,9 @@ class _MassnahmenViewState extends State<MassnahmenView> {
           final strasse = (m['orte']?['strassen']?['name'] ?? '').toString().toLowerCase();
           final beschr = (m['orte']?['beschreibung_genau'] ?? '').toString().toLowerCase();
           final tat = (m['taetigkeiten']?['beschreibung_kurz'] ?? '').toString().toLowerCase();
-          return strasse.contains(query.toLowerCase()) || 
-                 beschr.contains(query.toLowerCase()) ||
-                 tat.contains(query.toLowerCase());
+          return strasse.contains(query.toLowerCase()) ||
+              beschr.contains(query.toLowerCase()) ||
+              tat.contains(query.toLowerCase());
         }).toList();
       }
     });
@@ -138,14 +137,13 @@ class _MassnahmenViewState extends State<MassnahmenView> {
     dynamic selectedOrtId = item?['ort_id'];
     dynamic selectedTaetigkeitId = item?['taetigkeit_id'];
     String? selectedKennzeichen = item?['kennzeichen'];
-    
-    String qrCodeId = item?['qr_code_id'] ?? const Uuid().v4(); 
+
+    String qrCodeId = item?['qr_code_id'] ?? const Uuid().v4();
     DateTime selectedDate = item != null ? DateTime.parse(item['start_datum']) : DateTime.now();
 
     final startController = TextEditingController(
       text: DateFormat('dd.MM.yyyy').format(selectedDate),
     );
-    // NEU: Auftragsnummer Controller
     final auftragnummerController = TextEditingController(
       text: item?['auftragsnummer'] ?? '',
     );
@@ -197,15 +195,15 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                   controller: startController,
                   readOnly: true,
                   decoration: const InputDecoration(
-                    labelText: "Bezugs- / Startdatum", 
+                    labelText: "Bezugs- / Startdatum",
                     suffixIcon: Icon(Icons.calendar_today),
                   ),
                   onTap: () async {
                     DateTime? p = await showDatePicker(
-                      context: context, 
-                      initialDate: selectedDate, 
-                      firstDate: DateTime(2025), 
-                      lastDate: DateTime(2035)
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2025),
+                      lastDate: DateTime(2035),
                     );
                     if (p != null) {
                       setDS(() {
@@ -215,7 +213,6 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                     }
                   },
                 ),
-                // NEU: Auftragsnummer
                 const SizedBox(height: 8),
                 TextField(
                   controller: auftragnummerController,
@@ -244,45 +241,32 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                     'kennzeichen': selectedKennzeichen,
                     'qr_code_id': qrCodeId,
                     'start_datum': DateFormat('yyyy-MM-dd').format(selectedDate),
-                    // NEU: Auftragsnummer speichern
                     'auftragsnummer': auftragnummerController.text.trim().isEmpty
                         ? null
                         : auftragnummerController.text.trim(),
                   };
 
+                  // Intervall aus gewählter Tätigkeit holen
+                  final tatInfo = _taetigkeiten.firstWhere((t) => t['id'] == selectedTaetigkeitId);
+                  final int intervall = tatInfo['intervall_tage'] ?? 7;
+
                   String mId;
                   if (isEdit) {
                     mId = item['id'].toString();
-                    await supabase.from('ausfuehrung').delete()
-                        .eq('massnahme_id', mId).eq('erledigt', false);
                     await supabase.from('massnahmen').update(massnahmeData).eq('id', mId);
                   } else {
                     final res = await supabase.from('massnahmen').insert(massnahmeData).select().single();
                     mId = res['id'].toString();
                   }
 
-                  final int jahr = selectedDate.year;
-                  final DateTime saisonEnde = DateTime(jahr, 11, 3, 23, 59);
-                  
-                  final tatInfo = _taetigkeiten.firstWhere((t) => t['id'] == selectedTaetigkeitId);
-                  final int intervall = tatInfo['intervall_tage'] ?? 7;
-
-                  List<Map<String, dynamic>> neueTermine = [];
-                  DateTime naechsterTermin = selectedDate;
-
-                  while (naechsterTermin.isBefore(saisonEnde) || naechsterTermin.isAtSameMomentAs(saisonEnde)) {
-                    neueTermine.add({
-                      'massnahme_id': mId,
-                      'geplant_am': DateFormat('yyyy-MM-dd').format(naechsterTermin),
-                      'erledigt': false,
-                      'kennzeichen': selectedKennzeichen,
-                    });
-                    naechsterTermin = naechsterTermin.add(Duration(days: intervall));
-                  }
-
-                  if (neueTermine.isNotEmpty) {
-                    await supabase.from('ausfuehrung').insert(neueTermine);
-                  }
+                  // Saison über zentrale Logik planen (löscht offene Termine und plant neu)
+                  await GiesAppLogik.planeSaison(
+                    massnahmeId: mId,
+                    startDatum: selectedDate,
+                    intervall: intervall,
+                    kennzeichen: selectedKennzeichen,
+                    loescheOffene: true,
+                  );
 
                   if (mounted) {
                     Navigator.of(ctx).pop();
@@ -308,7 +292,10 @@ class _MassnahmenViewState extends State<MassnahmenView> {
         content: const Text("Dies löscht die Maßnahme und alle noch offenen Termine."),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Nein")),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Ja", style: TextStyle(color: Colors.red))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Ja", style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );
@@ -338,8 +325,8 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                         IconButton(
                           icon: const Icon(Icons.print, color: Colors.blueGrey),
                           onPressed: () => _zeigeDruckDialog(
-                            daten: _filteredMassnahmen, 
-                            titel: "Alle QR-Codes drucken"
+                            daten: _filteredMassnahmen,
+                            titel: "Alle QR-Codes drucken",
                           ),
                           tooltip: "Alle gefilterten QR-Codes drucken",
                         ),
@@ -370,66 +357,74 @@ class _MassnahmenViewState extends State<MassnahmenView> {
             ),
           ),
           Expanded(
-            child: _isLoading 
-              ? const Center(child: CircularProgressIndicator())
-              : ListView.builder(
-                  itemCount: _filteredMassnahmen.length,
-                  controller: _scrollController,
-                  itemBuilder: (ctx, i) {
-                    final m = _filteredMassnahmen[i];
-                    final ort = m['orte'];
-                    
-                    final bool istEingeplant = m['end_datum'] != null;
-                    final bool hatRealesEnde = m['reales_end_datum'] != null;
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : ListView.builder(
+                    itemCount: _filteredMassnahmen.length,
+                    controller: _scrollController,
+                    itemBuilder: (ctx, i) {
+                      final m = _filteredMassnahmen[i];
+                      final ort = m['orte'];
 
-                    final displayHnr = (ort?['hausnummer'] == null || ort?['hausnummer'] == 'null') ? "" : " ${ort?['hausnummer']}";
-                    final displayFullOrt = "${ort?['strassen']?['name'] ?? ''}$displayHnr - ${ort?['beschreibung_genau'] ?? ''}";
+                      final bool istEingeplant = m['end_datum'] != null;
+                      final bool hatRealesEnde = m['reales_end_datum'] != null;
 
-                    return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      child: ListTile(
-                        leading: Icon(
-                          Icons.park, 
-                          color: istEingeplant ? Colors.green : Colors.grey,
-                          size: 35,
-                        ),
-                        title: Text(displayFullOrt),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text("${m['taetigkeiten']?['beschreibung_kurz']}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                            // NEU: Auftragsnummer anzeigen wenn vorhanden
-                            if (m['auftragsnummer'] != null && m['auftragsnummer'].toString().isNotEmpty)
+                      final displayHnr = (ort?['hausnummer'] == null || ort?['hausnummer'] == 'null') ? "" : " ${ort?['hausnummer']}";
+                      final displayFullOrt = "${ort?['strassen']?['name'] ?? ''}$displayHnr - ${ort?['beschreibung_genau'] ?? ''}";
+
+                      return Card(
+                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        child: ListTile(
+                          leading: Icon(
+                            Icons.park,
+                            color: istEingeplant ? Colors.green : Colors.grey,
+                            size: 35,
+                          ),
+                          title: Text(displayFullOrt),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Text(
-                                "Auftrag: ${m['auftragsnummer']}",
-                                style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
+                                "${m['taetigkeiten']?['beschreibung_kurz']}",
+                                style: const TextStyle(fontWeight: FontWeight.bold),
                               ),
-                            Text(
-                              hatRealesEnde 
-                                ? "Abschluss der Maßnahme: ${DateFormat('dd.MM.yyyy').format(DateTime.parse(m['reales_end_datum']))}"
-                                : "kein Ende festgelegt", 
-                              style: const TextStyle(fontSize: 11, color: Colors.black54)
-                            ),
-                          ],
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.qr_code), 
-                              onPressed: () => _zeigeDruckDialog(
-                                daten: [m], 
-                                titel: "$displayFullOrt drucken"
+                              if ((m['auftragsnummer'] ?? '').toString().isNotEmpty)
+                                Text(
+                                  "Auftrag: ${m['auftragsnummer']}",
+                                  style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
+                                ),
+                              Text(
+                                hatRealesEnde
+                                    ? "Abschluss: ${DateFormat('dd.MM.yyyy').format(DateTime.parse(m['reales_end_datum']))}"
+                                    : "kein Ende festgelegt",
+                                style: const TextStyle(fontSize: 11, color: Colors.black54),
                               ),
-                            ),
-                            IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _zeigeMassnahmenDialog(item: m)),
-                            IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () => _loescheMassnahme(m['id'])),
-                          ],
+                            ],
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.qr_code),
+                                onPressed: () => _zeigeDruckDialog(
+                                  daten: [m],
+                                  titel: "$displayFullOrt drucken",
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.edit, color: Colors.blue),
+                                onPressed: () => _zeigeMassnahmenDialog(item: m),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                onPressed: () => _loescheMassnahme(m['id']),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

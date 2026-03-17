@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:giessen_app/funktionen/fn_allgemein.dart';
@@ -14,7 +13,6 @@ class AusfuehrungenView extends StatefulWidget {
 }
 
 class _AusfuehrungenViewState extends State<AusfuehrungenView> {
-  final supabase = Supabase.instance.client;
   final MapController _mapController = MapController();
   final ItemScrollController _itemScrollController = ItemScrollController();
   final TextEditingController _searchController = TextEditingController();
@@ -41,39 +39,16 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
   }
 
   int _getISOWeek(DateTime date) {
-    int dayOfYear = int.parse(DateFormat("D").format(date));
-    return ((dayOfYear - date.weekday + 10) / 7).floor();
-  }
-
-  DateTime _getStartOfKW(int kw) {
-    return DateTime(2026, 1, 1).add(Duration(days: (kw - 1) * 7 - 3));
+    return GiesAppLogik.getISOWeek(date);
   }
 
   Future<void> _loadData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      final start = _getStartOfKW(_selectedKW);
-      final end = start.add(const Duration(days: 6, hours: 23, minutes: 59));
-
-      final res = await supabase.from('ausfuehrung').select('''
-        id, erledigt, geplant_am, kennzeichen, massnahme_id,
-        orte (
-          id, beschreibung_genau, hausnummer, latitude, longitude,
-          strassen:strasse_id (name, stadtteil)
-        ),
-        massnahmen (
-          id,
-          auftragsnummer,
-          taetigkeiten (beschreibung_kurz, intervall_tage)
-        )
-      ''')
-          .gte('geplant_am', start.toIso8601String())
-          .lte('geplant_am', end.toIso8601String())
-          .order('geplant_am');
-
+      final data = await GiesAppLogik.ladeAusfuehrungenProKW(_selectedKW);
       setState(() {
-        _allData = res as List<dynamic>;
+        _allData = data;
         _applyFilter();
         _isLoading = false;
       });
