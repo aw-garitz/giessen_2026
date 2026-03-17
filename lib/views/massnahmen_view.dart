@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:giessen_app/qr_pdf_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 import 'package:uuid/uuid.dart';
+// WICHTIG: Importiere deine Logik-Datei
+import 'package:giessen_app/funktionen/fn_allgemein.dart'; 
 
 class MassnahmenView extends StatefulWidget {
   const MassnahmenView({super.key});
@@ -234,34 +235,43 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                   String mId;
                   if (isEdit) {
                     mId = item['id'].toString();
+                    // 1. Zuerst alle alten offenen Termine löschen (Reset der Planung)
                     await supabase.from('ausfuehrung').delete()
                         .eq('massnahme_id', mId).eq('erledigt', false);
+                    // 2. Stammdaten aktualisieren
                     await supabase.from('massnahmen').update(massnahmeData).eq('id', mId);
                   } else {
+                    // 1. Neue Maßnahme anlegen
                     final res = await supabase.from('massnahmen').insert(massnahmeData).select().single();
                     mId = res['id'].toString();
                   }
 
-                  await Future.delayed(const Duration(milliseconds: 400));
-                  final calcRes = await supabase
-                      .from('view_massnahmen_planung')
-                      .select('end_datum, reales_end_datum')
-                      .eq('massnahme_id', mId)
-                      .maybeSingle();
+                  // --- NEUE SAISON-PLANUNGSLOGIK START ---
+                  final int jahr = selectedDate.year;
+                  final DateTime saisonEnde = DateTime(jahr, 11, 3, 23, 59);
+                  
+                  // Tätigkeit laden, um das Intervall zu kennen
+                  final tatInfo = _taetigkeiten.firstWhere((t) => t['id'] == selectedTaetigkeitId);
+                  final int intervall = tatInfo['intervall_tage'] ?? 7;
 
-                  if (calcRes != null) {
-                    await supabase.from('massnahmen').update({
-                      'end_datum': calcRes['end_datum'],
-                      'reales_end_datum': calcRes['reales_end_datum'],
-                    }).eq('id', mId);
+                  List<Map<String, dynamic>> neueTermine = [];
+                  DateTime naechsterTermin = selectedDate;
+
+                  // Alle Termine vom Startdatum bis zum Saisonende generieren
+                  while (naechsterTermin.isBefore(saisonEnde) || naechsterTermin.isAtSameMomentAs(saisonEnde)) {
+                    neueTermine.add({
+                      'massnahme_id': mId,
+                      'geplant_am': DateFormat('yyyy-MM-dd').format(naechsterTermin),
+                      'erledigt': false,
+                      'kennzeichen': selectedKennzeichen,
+                    });
+                    naechsterTermin = naechsterTermin.add(Duration(days: intervall));
                   }
 
-                  await supabase.from('ausfuehrung').upsert({
-                    'massnahme_id': mId,
-                    'geplant_am': DateFormat('yyyy-MM-dd').format(selectedDate),
-                    'erledigt': false,
-                    'kennzeichen': selectedKennzeichen,
-                  }, onConflict: 'massnahme_id, geplant_am');
+                  if (neueTermine.isNotEmpty) {
+                    await supabase.from('ausfuehrung').insert(neueTermine);
+                  }
+                  // --- NEUE SAISON-PLANUNGSLOGIK ENDE ---
 
                   if (mounted) {
                     Navigator.of(ctx).pop();
@@ -271,7 +281,7 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Fehler: $e")));
                 }
               },
-              child: Text(isEdit ? "Update & Planen" : "Speichern"),
+              child: Text(isEdit ? "Update & Neu Planen" : "Speichern & Planen"),
             ),
           ],
         ),
@@ -279,8 +289,28 @@ class _MassnahmenViewState extends State<MassnahmenView> {
     );
   }
 
+  Future<void> _loescheMassnahme(dynamic id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Serie löschen?"),
+        content: const Text("Dies löscht die Maßnahme und alle noch offenen Termine."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Nein")),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Ja", style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await supabase.from('ausfuehrung').delete().eq('massnahme_id', id).eq('erledigt', false);
+      await supabase.from('massnahmen').delete().eq('id', id);
+      _loadAllData();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // ... restlicher Build-Code bleibt gleich wie in deinem Original ...
     return Scaffold(
       body: Column(
         children: [
@@ -342,7 +372,6 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                     final bool istEingeplant = m['end_datum'] != null;
                     final bool hatRealesEnde = m['reales_end_datum'] != null;
 
-                    // String für die eindeutige Anzeige zusammenbauen
                     final displayHnr = (ort?['hausnummer'] == null || ort?['hausnummer'] == 'null') ? "" : " ${ort?['hausnummer']}";
                     final displayFullOrt = "${ort?['strassen']?['name'] ?? ''}$displayHnr - ${ort?['beschreibung_genau'] ?? ''}";
 
@@ -354,7 +383,7 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                           color: istEingeplant ? Colors.green : Colors.grey,
                           size: 35,
                         ),
-                        title: Text(displayFullOrt), // GEÄNDERT: Jetzt mit beschreibung_genau
+                        title: Text(displayFullOrt),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -374,7 +403,7 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                               icon: const Icon(Icons.qr_code), 
                               onPressed: () => _zeigeDruckDialog(
                                 daten: [m], 
-                                titel: "$displayFullOrt drucken" // GEÄNDERT: Klarheit im Dialog
+                                titel: "$displayFullOrt drucken"
                               ),
                             ),
                             IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _zeigeMassnahmenDialog(item: m)),
@@ -389,23 +418,5 @@ class _MassnahmenViewState extends State<MassnahmenView> {
         ],
       ),
     );
-  }
-
-  Future<void> _loescheMassnahme(dynamic id) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Serie löschen?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Nein")),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Ja", style: TextStyle(color: Colors.red))),
-        ],
-      ),
-    );
-    if (confirm == true) {
-      await supabase.from('ausfuehrung').delete().eq('massnahme_id', id).eq('erledigt', false);
-      await supabase.from('massnahmen').delete().eq('id', id);
-      _loadAllData();
-    }
   }
 }

@@ -41,7 +41,6 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      // Nutzt die stabile Funktion ohne blockierende DB-Filter
       final daten = await GiesAppLogik.ladeAusfuehrungenProKW(widget.selectedKW);
       
       if (mounted) {
@@ -56,21 +55,43 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
     }
   }
 
+  // --- NEUE LOGIK FÜR STATUS-UPDATE IN DER LISTE ---
   Future<void> _updateStatus(dynamic item, bool neuerStatus) async {
+    setState(() => _isLoading = true);
     try {
       if (neuerStatus) {
-        // KFZ wird für die Protokollierung mitgegeben
+        // 1. ERLEDIGEN & SAISON NEU PLANEN
+        // Nutzt das gewählte KFZ aus dem Filter für die Protokollierung
         await GiesAppLogik.erledigenUndPlanen(
           item, 
-          quelle: 'Liste', 
           kfz: widget.selectedKFZ
         );
       } else {
-        await GiesAppLogik.setzeAufOffen(item); 
+        // 2. RESET / RÜCKGÄNGIG
+        // Löscht die falsche Zukunft und stellt den alten Rhythmus wieder her
+        await GiesAppLogik.resetToLastStatus(item);
       }
-      if (mounted) _ladeDaten(); 
+      
+      if (mounted) {
+        await _ladeDaten(); // Liste mit neuem Planungsstand aktualisieren
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(neuerStatus 
+              ? "Erledigt & Saison neu geplant" 
+              : "Status zurückgesetzt & Rhythmus wiederhergestellt"),
+            backgroundColor: neuerStatus ? Colors.green : Colors.orange,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } catch (e) {
       debugPrint("Update Fehler Liste: $e");
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Fehler: $e"), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 

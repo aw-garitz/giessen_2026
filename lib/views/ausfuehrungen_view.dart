@@ -4,6 +4,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+// WICHTIG: Pfad zu deiner Logik-Datei prüfen!
+import 'package:giessen_app/funktionen/fn_allgemein.dart'; 
 
 class AusfuehrungenView extends StatefulWidget {
   const AusfuehrungenView({super.key});
@@ -45,6 +47,7 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
   }
 
   DateTime _getStartOfKW(int kw) {
+    // Bezug auf das aktuelle Jahr 2026
     return DateTime(2026, 1, 1).add(Duration(days: (kw - 1) * 7 - 3));
   }
 
@@ -55,13 +58,17 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
       final start = _getStartOfKW(_selectedKW);
       final end = start.add(const Duration(days: 6, hours: 23, minutes: 59));
 
+      // Erweiterte Abfrage, um die Intervall-Tage für die Neuplanung parat zu haben
       final res = await supabase.from('ausfuehrung').select('''
-        id, erledigt, geplant_am, kennzeichen,
+        id, erledigt, geplant_am, kennzeichen, massnahme_id,
         orte (
           id, beschreibung_genau, hausnummer, latitude, longitude, 
           strassen:strasse_id (name, stadtteil)
         ), 
-        massnahmen (taetigkeiten (beschreibung_kurz))
+        massnahmen (
+          id,
+          taetigkeiten (beschreibung_kurz, intervall_tage)
+        )
       ''')
       .gte('geplant_am', start.toIso8601String())
       .lte('geplant_am', end.toIso8601String())
@@ -81,7 +88,7 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
   void _applyFilter() {
     setState(() {
       var temp = _allData.where((item) {
-        if (item['orte'] == null || item['orte']['latitude'] == null) return false;
+        if (item['orte'] == null) return false;
 
         final kfz = item['kennzeichen'] ?? "Ohne KFZ";
         final stadtteil = item['orte']['strassen']?['stadtteil'] ?? "Unbekannt";
@@ -130,17 +137,44 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
     );
   }
 
+  // --- NEUE LOGIK FÜR MASSEN-UPDATE ---
   Future<void> _bulkUpdate(bool markAsDone) async {
     if (_selectedIds.isEmpty) return;
+    
+    // UI Feedback: Ladeanzeige starten
+    setState(() => _isLoading = true);
+
     try {
-      await supabase.from('ausfuehrung').update({'erledigt': markAsDone}).filter('id', 'in', _selectedIds.toList());
+      for (var id in _selectedIds) {
+        // Das entsprechende Item in der Liste finden
+        final item = _allData.firstWhere((e) => e['id'].toString() == id);
+        
+        if (markAsDone) {
+          // KFZ-Übergabe: Wenn "Alle KFZ" gewählt ist, nutzen wir null/Standard
+          String? kfz = _selectedKennzeichen == "Alle KFZ" ? null : _selectedKennzeichen;
+          await GiesAppLogik.erledigenUndPlanen(item, kfz: kfz);
+        } else {
+          await GiesAppLogik.resetToLastStatus(item);
+        }
+      }
+      
       _selectedIds.clear();
-      await _loadData();
+      await _loadData(); // Liste neu laden, um Änderungen zu sehen
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("${markAsDone ? 'Erledigt' : 'Reset'} für ${_selectedIds.length} Orte durchgeführt."))
+        );
+      }
     } catch (e) {
       debugPrint("Bulk Fehler: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Fehler beim Massen-Update: $e")));
+      }
+      setState(() => _isLoading = false);
     }
   }
 
+  // --- NEUE LOGIK FÜR EINZEL-UPDATE ---
   Future<void> _toggleStatus(Map<String, dynamic> item) async {
     final bool isDone = item['erledigt'] ?? false;
     final ort = item['orte'];
@@ -151,7 +185,9 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text("$name$hnr"),
-        content: Text(isDone ? "Zurück auf OFFEN setzen?" : "Als ERLEDIGT markieren?"),
+        content: Text(isDone 
+          ? "Status auf OFFEN setzen und Saison-Planung wiederherstellen?" 
+          : "Als ERLEDIGT markieren und restliche Saison neu berechnen?"),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Abbruch")),
           ElevatedButton(
@@ -164,11 +200,19 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
     );
 
     if (confirm == true) {
+      setState(() => _isLoading = true);
       try {
-        await supabase.from('ausfuehrung').update({'erledigt': !isDone}).eq('id', item['id']);
+        if (!isDone) {
+          String? kfz = _selectedKennzeichen == "Alle KFZ" ? null : _selectedKennzeichen;
+          await GiesAppLogik.erledigenUndPlanen(item, kfz: kfz);
+        } else {
+          await GiesAppLogik.resetToLastStatus(item);
+        }
         await _loadData();
       } catch (e) {
         debugPrint("Update Fehler: $e");
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Fehler: $e")));
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -235,7 +279,11 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
                       padding: const EdgeInsets.all(10.0),
                       child: TextField(
                         controller: _searchController,
-                        decoration: InputDecoration(hintText: "Suchen...", prefixIcon: const Icon(Icons.search), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+                        decoration: InputDecoration(
+                          hintText: "Suchen...", 
+                          prefixIcon: const Icon(Icons.search), 
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))
+                        ),
                         onChanged: (v) { _searchQuery = v; _applyFilter(); },
                       ),
                     ),

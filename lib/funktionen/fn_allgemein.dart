@@ -57,17 +57,24 @@ static Future<void> erledigenUndPlanen(dynamic ausfuehrung, {String? kfz, String
       final nun = DateTime.now();
       final massnahmeId = ausfuehrung['massnahme_id'];
       final int jahr = nun.year;
-      final DateTime saisonEnde = DateTime(jahr, 11, 3, 23, 59); // 03.11. des aktuellen Jahres
+      final DateTime saisonEnde = DateTime(jahr, 11, 3, 23, 59); // Saison-Stopp am 03.11.
 
-      // 1. Aktuellen Termin als erledigt markieren
+      // WICHTIG: Validierung des Kennzeichens gegen den Datenbank-Fehler (fk_ausfuehrung_fahrzeuge)
+      // Wenn "Alle" gewählt ist oder nichts übergeben wurde, speichern wir NULL, 
+      // damit die Datenbank-Einschränkung nicht verletzt wird.
+      String? bereinigtesKfz = (kfz == null || kfz == "Alle" || kfz.trim().isEmpty) 
+                               ? null 
+                               : kfz;
+
+      // 1. Den aktuellen Termin als erledigt markieren
       await supabase.from('ausfuehrung').update({
         'erledigt': true,
         'ausgefuehrt_am': nun.toIso8601String(),
-        'kennzeichen': kfz ?? ausfuehrung['kennzeichen'],
+        'kennzeichen': bereinigtesKfz, // Nutzt das validierte Kennzeichen
       }).eq('id', ausfuehrung['id']);
 
-      // 2. ALLE zukünftigen offenen Termine dieser Maßnahme im aktuellen Jahr löschen
-      // (Wir säubern das Feld für die Neukalibrierung)
+      // 2. ESSENTIELL: Alle zukünftigen offenen Termine dieser Maßnahme im aktuellen Jahr löschen
+      // Damit wird die alte Planung verworfen und Platz für den neuen Rhythmus gemacht.
       await supabase
           .from('ausfuehrung')
           .delete()
@@ -76,32 +83,35 @@ static Future<void> erledigenUndPlanen(dynamic ausfuehrung, {String? kfz, String
           .gt('geplant_am', nun.toIso8601String())
           .lte('geplant_am', DateTime(jahr, 12, 31).toIso8601String());
 
-      // 3. Neuberennung der Saison bis 03.11.
+      // 3. Neuberennung der Saison basierend auf dem echten Intervall
+      // Wir greifen auf 'intervall_tage' in der verknüpften Tabelle 'taetigkeiten' zu
       final int intervall = ausfuehrung['massnahmen']?['taetigkeiten']?['intervall_tage'] ?? 7;
       List<Map<String, dynamic>> neueTermine = [];
       
       DateTime naechsterCheck = nun.add(Duration(days: intervall));
 
-      // Schleife füllt die Saison auf
+      // Schleife füllt die Saison im neuen Rhythmus bis zum 03.11. auf
       while (naechsterCheck.isBefore(saisonEnde) || naechsterCheck.isAtSameMomentAs(saisonEnde)) {
         neueTermine.add({
           'massnahme_id': massnahmeId,
           'geplant_am': naechsterCheck.toIso8601String(),
           'erledigt': false,
-          'kennzeichen': kfz ?? ausfuehrung['kennzeichen'],
+          'kennzeichen': bereinigtesKfz, // Auch hier das validierte Kennzeichen setzen
         });
-        // Zum nächsten Termin springen
+        // Zum nächsten Termin im Intervall springen
         naechsterCheck = naechsterCheck.add(Duration(days: intervall));
       }
 
-      // 4. Batch-Insert der neuen Saison-Termine
+      // 4. Batch-Insert der neuen Saison-Termine (effizient in einem Rutsch)
       if (neueTermine.isNotEmpty) {
         await supabase.from('ausfuehrung').insert(neueTermine);
       }
       
-      debugPrint("🧹 Saison bereinigt und ${neueTermine.length} neue Termine bis 03.11. generiert.");
+      debugPrint("🧹 Saison für Maßnahme $massnahmeId bereinigt.");
+      debugPrint("🚀 ${neueTermine.length} neue Termine bis 03.11. (Intervall: $intervall Tage) erstellt.");
+      
     } catch (e) {
-      debugPrint("❌ Fehler in Saison-Logik: $e");
+      debugPrint("❌ Kritischer Fehler in erledigenUndPlanen: $e");
       throw "Fehler beim Re-Kalibrieren der Saison: $e";
     }
   }

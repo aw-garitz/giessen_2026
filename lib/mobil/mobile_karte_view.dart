@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
-
 import 'package:giessen_app/funktionen/fn_allgemein.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:intl/intl.dart';
@@ -37,7 +36,8 @@ class _MobileKarteViewState extends State<MobileKarteView> {
   @override
   void didUpdateWidget(MobileKarteView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.selectedKW != widget.selectedKW) {
+    // Wenn die KW oder das KFZ im Filter geändert wird, Daten neu laden
+    if (oldWidget.selectedKW != widget.selectedKW || oldWidget.selectedKFZ != widget.selectedKFZ) {
       _ladeAusfuehrungen();
     }
   }
@@ -46,9 +46,13 @@ class _MobileKarteViewState extends State<MobileKarteView> {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
+      // Nutzt die bestehende Ladelogik aus deiner fn_allgemein
       final daten = await GiesAppLogik.ladeAusfuehrungenProKW(widget.selectedKW);
+      
       if (mounted) {
         setState(() {
+          // Optional: Hier könnte man noch nach widget.selectedKFZ filtern, 
+          // falls ladeAusfuehrungenProKW das noch nicht tut.
           _ausfuehrungen = daten;
           _isLoading = false;
         });
@@ -59,24 +63,32 @@ class _MobileKarteViewState extends State<MobileKarteView> {
     }
   }
 
+  // --- NEUE LOGIK FÜR STATUS-UPDATE AUF DER KARTE ---
   Future<void> _updateStatus(dynamic a, bool neuerStatus) async {
+    setState(() => _isLoading = true);
     try {
       if (neuerStatus) {
+        // 1. ERLEDIGEN & NEU PLANEN
+        // Nutzt die zentrale Logik inkl. Saison-Berechnung bis 03.11.
         await GiesAppLogik.erledigenUndPlanen(
           a, 
-          quelle: 'Karte', 
           kfz: widget.selectedKFZ
         );
       } else {
-        await GiesAppLogik.setzeAufOffen(a); 
+        // 2. RESET / RÜCKGÄNGIG
+        // Löscht die falsche Zukunft und stellt den alten Rhythmus wieder her
+        await GiesAppLogik.resetToLastStatus(a);
       }
 
       if (mounted) {
-        Navigator.pop(context); 
-        _ladeAusfuehrungen();   
+        Navigator.pop(context); // BottomSheet schließen
+        await _ladeAusfuehrungen(); // Karte aktualisieren
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(neuerStatus ? "Erledigt & Zukunft geplant" : "Wieder offen"),
+            content: Text(neuerStatus 
+              ? "Erledigt & Saison neu geplant" 
+              : "Status zurückgesetzt & Rhythmus wiederhergestellt"),
             backgroundColor: neuerStatus ? Colors.green : Colors.orange,
             behavior: SnackBarBehavior.floating,
           ),
@@ -84,6 +96,12 @@ class _MobileKarteViewState extends State<MobileKarteView> {
       }
     } catch (e) {
       debugPrint("Update Fehler Karte: $e");
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Fehler: $e"), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -127,7 +145,6 @@ class _MobileKarteViewState extends State<MobileKarteView> {
             initialZoom: 15,
           ),
           children: [
-            // Karten-Layer (Satellit oder Map)
             if (_showSatellite) ...[
               TileLayer(urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'),
               TileLayer(
@@ -140,7 +157,6 @@ class _MobileKarteViewState extends State<MobileKarteView> {
                 subdomains: const ['a', 'b', 'c', 'd'],
               ),
 
-            // Cluster-Layer
             MarkerClusterLayerWidget(
               options: MarkerClusterLayerOptions(
                 maxClusterRadius: 45,
@@ -171,7 +187,6 @@ class _MobileKarteViewState extends State<MobileKarteView> {
           ],
         ),
         
-        // Button zum Umschalten der Ansicht
         Positioned(
           bottom: 20, right: 20,
           child: FloatingActionButton(
