@@ -23,7 +23,8 @@ class MobileKarteView extends StatefulWidget {
 
 class _MobileKarteViewState extends State<MobileKarteView> {
   final MapController _mapController = MapController();
-  List<dynamic> _ausfuehrungen = [];
+  List<dynamic> _alleAusfuehrungen = [];
+  List<dynamic> _gefilterteAusfuehrungen = [];
   bool _isLoading = false;
   bool _showSatellite = true;
 
@@ -36,8 +37,12 @@ class _MobileKarteViewState extends State<MobileKarteView> {
   @override
   void didUpdateWidget(MobileKarteView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.selectedKW != widget.selectedKW || oldWidget.selectedKFZ != widget.selectedKFZ) {
+    if (oldWidget.selectedKW != widget.selectedKW) {
+      // KW geändert → neu laden
       _ladeAusfuehrungen();
+    } else if (oldWidget.selectedKFZ != widget.selectedKFZ) {
+      // Nur KFZ geändert → nur filtern
+      _filterAnwenden();
     }
   }
 
@@ -48,9 +53,10 @@ class _MobileKarteViewState extends State<MobileKarteView> {
       final daten = await GiesAppLogik.ladeAusfuehrungenProKW(widget.selectedKW);
       if (mounted) {
         setState(() {
-          _ausfuehrungen = daten;
+          _alleAusfuehrungen = daten;
           _isLoading = false;
         });
+        _filterAnwenden();
       }
     } catch (e) {
       debugPrint("Kartenfehler beim Laden: $e");
@@ -58,16 +64,29 @@ class _MobileKarteViewState extends State<MobileKarteView> {
     }
   }
 
+  void _filterAnwenden() {
+    final kfz = widget.selectedKFZ;
+    List<dynamic> gefiltert;
+
+    if (kfz == null || kfz == "Alle") {
+      gefiltert = List.from(_alleAusfuehrungen);
+    } else {
+      gefiltert = _alleAusfuehrungen
+          .where((item) => item['kennzeichen']?.toString() == kfz)
+          .toList();
+    }
+
+    setState(() => _gefilterteAusfuehrungen = gefiltert);
+  }
+
   Future<void> _updateStatus(dynamic a, bool neuerStatus) async {
     setState(() => _isLoading = true);
     try {
       if (neuerStatus) {
-        // Erledigen & Saison neu planen bis 30.11.
         await GiesAppLogik.erledigenUndPlanen(a, kfz: widget.selectedKFZ);
       } else {
         await GiesAppLogik.resetToLastStatus(a);
       }
-
       if (mounted) {
         Navigator.pop(context);
         await _ladeAusfuehrungen();
@@ -94,15 +113,16 @@ class _MobileKarteViewState extends State<MobileKarteView> {
 
   @override
   Widget build(BuildContext context) {
-    final List<Marker> markers = _ausfuehrungen
+    final List<Marker> markers = _gefilterteAusfuehrungen
         .where((a) {
-          final ort = a['orte'];
+          final ort = a['massnahmen']?['orte'];
           return ort != null && ort['latitude'] != null && ort['longitude'] != null;
         })
         .map((a) {
           final bool done = a['erledigt'] ?? false;
-          final double lat = double.tryParse(a['orte']['latitude'].toString()) ?? 0.0;
-          final double lng = double.tryParse(a['orte']['longitude'].toString()) ?? 0.0;
+          final ort = a['massnahmen']?['orte'];
+          final double lat = double.tryParse(ort['latitude'].toString()) ?? 0.0;
+          final double lng = double.tryParse(ort['longitude'].toString()) ?? 0.0;
 
           return Marker(
             point: LatLng(lat, lng),
@@ -180,9 +200,9 @@ class _MobileKarteViewState extends State<MobileKarteView> {
   }
 
   void _zeigeDetails(dynamic a) {
-    final ort = a['orte'];
+    final ort = a['massnahmen']?['orte'];
     final bool erledigt = a['erledigt'] ?? false;
-    final String strasse = "${ort?['strassen']?['name'] ?? 'Unbekannt'} ${ort?['hausnummer'] ?? ''}";
+    final String strasse = "${ort?['strassen']?['name'] ?? 'Unbekannt'} ${ort?['hausnummer'] ?? ''}".trim();
     final String beschr = ort?['beschreibung_genau'] ?? 'Keine Details';
     final String taetigkeit = a['massnahmen']?['taetigkeiten']?['beschreibung_kurz'] ?? 'Pflege';
     final String auftrag = (a['massnahmen']?['auftragsnummer'] ?? '').toString();

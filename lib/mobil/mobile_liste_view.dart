@@ -6,12 +6,14 @@ class MobileTourListeView extends StatefulWidget {
   final int selectedKW;
   final String? selectedKFZ;
   final VoidCallback? onJumpToScanner;
+  final ValueChanged<int>? onCountChanged;
 
   const MobileTourListeView({
     super.key,
     required this.selectedKW,
     this.selectedKFZ,
     this.onJumpToScanner,
+    this.onCountChanged,
   });
 
   @override
@@ -19,7 +21,8 @@ class MobileTourListeView extends StatefulWidget {
 }
 
 class _MobileTourListeViewState extends State<MobileTourListeView> {
-  List<dynamic> _ausfuehrungen = [];
+  List<dynamic> _alleAusfuehrungen = [];
+  List<dynamic> _gefilterteAusfuehrungen = [];
   bool _isLoading = false;
 
   @override
@@ -31,9 +34,12 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
   @override
   void didUpdateWidget(MobileTourListeView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.selectedKW != widget.selectedKW ||
-        oldWidget.selectedKFZ != widget.selectedKFZ) {
+    if (oldWidget.selectedKW != widget.selectedKW) {
+      // KW geändert → neu laden
       _ladeDaten();
+    } else if (oldWidget.selectedKFZ != widget.selectedKFZ) {
+      // Nur KFZ geändert → nur filtern, kein neuer DB-Request
+      _filterAnwenden();
     }
   }
 
@@ -44,15 +50,36 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
       final daten = await GiesAppLogik.ladeAusfuehrungenProKW(widget.selectedKW);
       if (mounted) {
         setState(() {
-          _ausfuehrungen = daten;
+          _alleAusfuehrungen = daten;
           _isLoading = false;
         });
+        _filterAnwenden();
       }
     } catch (e) {
       debugPrint("Listenfehler beim Laden: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
+void _filterAnwenden() {
+  final kfz = widget.selectedKFZ;
+  List<dynamic> gefiltert;
+
+  if (kfz == null || kfz == "Alle") {
+    gefiltert = List.from(_alleAusfuehrungen);
+  } else {
+    gefiltert = _alleAusfuehrungen
+        .where((item) => item['kennzeichen']?.toString() == kfz)
+        .toList();
+  }
+
+  setState(() => _gefilterteAusfuehrungen = gefiltert);
+
+  // Callback NACH dem Build aufrufen – verhindert setState during build
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    widget.onCountChanged?.call(gefiltert.length);
+  });
+}
 
   Future<void> _updateStatus(dynamic item, bool neuerStatus) async {
     setState(() => _isLoading = true);
@@ -87,8 +114,9 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
 
   void _zeigeAktionsDialog(dynamic item) {
     final bool done = item['erledigt'] ?? false;
-    final String strasse = "${item['orte']?['strassen']?['name'] ?? ''} ${item['orte']?['hausnummer'] ?? ''}";
-    final String beschreibung = item['orte']?['beschreibung_genau'] ?? '';
+    final ort = item['massnahmen']?['orte'];
+    final String strasse = "${ort?['strassen']?['name'] ?? ''} ${ort?['hausnummer'] ?? ''}".trim();
+    final String beschreibung = ort?['beschreibung_genau'] ?? '';
     final String taetigkeit = item['massnahmen']?['taetigkeiten']?['beschreibung_kurz'] ?? 'Gießen';
     final String auftrag = (item['massnahmen']?['auftragsnummer'] ?? '').toString();
 
@@ -182,7 +210,7 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
   Widget build(BuildContext context) {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
 
-    if (_ausfuehrungen.isEmpty) {
+    if (_gefilterteAusfuehrungen.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -199,13 +227,14 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
       onRefresh: _ladeDaten,
       child: ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        itemCount: _ausfuehrungen.length,
+        itemCount: _gefilterteAusfuehrungen.length,
         itemBuilder: (ctx, i) {
-          final item = _ausfuehrungen[i];
+          final item = _gefilterteAusfuehrungen[i];
           final bool done = item['erledigt'] ?? false;
 
-          final strassenName = "${item['orte']?['strassen']?['name'] ?? ''} ${item['orte']?['hausnummer'] ?? ''}".trim();
-          final beschreibungGenau = item['orte']?['beschreibung_genau'] ?? '';
+          final ort = item['massnahmen']?['orte'];
+          final strassenName = "${ort?['strassen']?['name'] ?? ''} ${ort?['hausnummer'] ?? ''}".trim();
+          final beschreibungGenau = ort?['beschreibung_genau'] ?? '';
           final String taetigkeitKurz = item['massnahmen']?['taetigkeiten']?['beschreibung_kurz'] ?? 'Pflege';
           final String auftrag = (item['massnahmen']?['auftragsnummer'] ?? '').toString();
           final String datum = item['geplant_am'] != null
@@ -227,54 +256,33 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 child: Row(
                   children: [
-                    // Status-Icon
                     Icon(
                       done ? Icons.check_circle : Icons.radio_button_unchecked,
                       color: done ? Colors.green : Colors.grey.shade400,
                       size: 22,
                     ),
                     const SizedBox(width: 10),
-                    // Inhalt
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            strassenName,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                          ),
+                          Text(strassenName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                           if (beschreibungGenau.isNotEmpty)
-                            Text(
-                              beschreibungGenau,
-                              style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
-                            ),
+                            Text(beschreibungGenau, style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontStyle: FontStyle.italic)),
                           const SizedBox(height: 4),
                           Row(
                             children: [
-                              // Tätigkeit-Badge
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.shade50,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  taetigkeitKurz,
-                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
-                                ),
+                                decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(4)),
+                                child: Text(taetigkeitKurz, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue.shade900)),
                               ),
                               if (auftrag.isNotEmpty) ...[
                                 const SizedBox(width: 6),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blueGrey.shade50,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    auftrag,
-                                    style: TextStyle(fontSize: 10, color: Colors.blueGrey.shade700),
-                                  ),
+                                  decoration: BoxDecoration(color: Colors.blueGrey.shade50, borderRadius: BorderRadius.circular(4)),
+                                  child: Text(auftrag, style: TextStyle(fontSize: 10, color: Colors.blueGrey.shade700)),
                                 ),
                               ],
                               const Spacer(),

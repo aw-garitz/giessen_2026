@@ -9,7 +9,9 @@ import 'package:giessen_app/views/mitarbeiter_view.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AdminDesktopScreen extends StatefulWidget {
-  const AdminDesktopScreen({super.key});
+  final String userName;
+
+  const AdminDesktopScreen({super.key, required this.userName});
 
   @override
   State<AdminDesktopScreen> createState() => _AdminDesktopScreenState();
@@ -18,15 +20,6 @@ class AdminDesktopScreen extends StatefulWidget {
 class _AdminDesktopScreenState extends State<AdminDesktopScreen> {
   int _selectedIndex = 0;
   bool _stammdatenExpanded = false;
-
-  // Index-Mapping:
-  // 0 = Standorte/Karte
-  // 1 = Straßenverzeichnis  (Stammdaten)
-  // 2 = Fuhrpark            (Stammdaten)
-  // 3 = Mitarbeiter         (Stammdaten)
-  // 4 = Tätigkeiten
-  // 5 = Maßnahmen-Planung
-  // 6 = Protokoll/Ausführung
 
   Widget _buildContent() {
     switch (_selectedIndex) {
@@ -95,7 +88,7 @@ class _AdminDesktopScreenState extends State<AdminDesktopScreen> {
         children: [
           // HEADER
           Padding(
-            padding: const EdgeInsets.only(top: 30, bottom: 40, left: 24),
+            padding: const EdgeInsets.only(top: 30, bottom: 16, left: 24),
             child: Row(
               children: const [
                 Icon(Icons.location_city, size: 32, color: _activeColor),
@@ -113,13 +106,22 @@ class _AdminDesktopScreenState extends State<AdminDesktopScreen> {
             ),
           ),
 
-          // Standorte / Karte
-          _navItem(
-            index: 0,
-            icon: Icons.map_outlined,
-            selectedIcon: Icons.map,
-            label: 'Standorte / Karte',
+          // Begrüßung
+          Padding(
+            padding: const EdgeInsets.only(left: 24, bottom: 24),
+            child: Row(
+              children: [
+                const Icon(Icons.account_circle, size: 18, color: _inactiveColor),
+                const SizedBox(width: 8),
+                Text(
+                  "Hallo, ${widget.userName}",
+                  style: const TextStyle(fontSize: 13, color: _inactiveColor),
+                ),
+              ],
+            ),
           ),
+
+          _navItem(index: 0, icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Standorte / Karte'),
 
           // STAMMDATEN - ausklappbar
           InkWell(
@@ -134,11 +136,7 @@ class _AdminDesktopScreenState extends State<AdminDesktopScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.folder_outlined,
-                    color: stammdatenActive ? _activeColor : _inactiveColor.withOpacity(0.7),
-                    size: 22,
-                  ),
+                  Icon(Icons.folder_outlined, color: stammdatenActive ? _activeColor : _inactiveColor.withOpacity(0.7), size: 22),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -150,73 +148,28 @@ class _AdminDesktopScreenState extends State<AdminDesktopScreen> {
                       ),
                     ),
                   ),
-                  Icon(
-                    _stammdatenExpanded ? Icons.expand_less : Icons.expand_more,
-                    color: _inactiveColor.withOpacity(0.7),
-                    size: 20,
-                  ),
+                  Icon(_stammdatenExpanded ? Icons.expand_less : Icons.expand_more, color: _inactiveColor.withOpacity(0.7), size: 20),
                 ],
               ),
             ),
           ),
 
-          // Stammdaten Untermenü
           AnimatedCrossFade(
             firstChild: const SizedBox.shrink(),
             secondChild: Column(
               children: [
-                _navItem(
-                  index: 1,
-                  icon: Icons.edit_road_outlined,
-                  selectedIcon: Icons.edit_road,
-                  label: 'Straßenverzeichnis',
-                  leftPadding: 32,
-                ),
-                _navItem(
-                  index: 2,
-                  icon: Icons.local_shipping_outlined,
-                  selectedIcon: Icons.local_shipping,
-                  label: 'Fuhrpark',
-                  leftPadding: 32,
-                ),
-                _navItem(
-                  index: 3,
-                  icon: Icons.people_outline,
-                  selectedIcon: Icons.people,
-                  label: 'Mitarbeiter',
-                  leftPadding: 32,
-                ),
+                _navItem(index: 1, icon: Icons.edit_road_outlined, selectedIcon: Icons.edit_road, label: 'Straßenverzeichnis', leftPadding: 32),
+                _navItem(index: 2, icon: Icons.local_shipping_outlined, selectedIcon: Icons.local_shipping, label: 'Fuhrpark', leftPadding: 32),
+                _navItem(index: 3, icon: Icons.people_outline, selectedIcon: Icons.people, label: 'Mitarbeiter', leftPadding: 32),
               ],
             ),
-            crossFadeState: _stammdatenExpanded
-                ? CrossFadeState.showSecond
-                : CrossFadeState.showFirst,
+            crossFadeState: _stammdatenExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 200),
           ),
 
-          // Tätigkeiten
-          _navItem(
-            index: 4,
-            icon: Icons.assignment_outlined,
-            selectedIcon: Icons.assignment,
-            label: 'Tätigkeiten',
-          ),
-
-          // Maßnahmen-Planung
-          _navItem(
-            index: 5,
-            icon: Icons.calendar_month_outlined,
-            selectedIcon: Icons.calendar_month,
-            label: 'Maßnahmen-Planung',
-          ),
-
-          // Protokoll / Ausführung
-          _navItem(
-            index: 6,
-            icon: Icons.fact_check_outlined,
-            selectedIcon: Icons.fact_check,
-            label: 'Protokoll / Ausführung',
-          ),
+          _navItem(index: 4, icon: Icons.assignment_outlined, selectedIcon: Icons.assignment, label: 'Tätigkeiten'),
+          _navItem(index: 5, icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month, label: 'Maßnahmen-Planung'),
+          _navItem(index: 6, icon: Icons.fact_check_outlined, selectedIcon: Icons.fact_check, label: 'Protokoll / Ausführung'),
 
           const Spacer(),
 
@@ -224,14 +177,9 @@ class _AdminDesktopScreenState extends State<AdminDesktopScreen> {
           Padding(
             padding: const EdgeInsets.only(left: 8, bottom: 24),
             child: TextButton.icon(
-              onPressed: () async {
-                await Supabase.instance.client.auth.signOut();
-              },
+              onPressed: () async => await Supabase.instance.client.auth.signOut(),
               icon: const Icon(Icons.logout, color: Colors.redAccent, size: 20),
-              label: const Text(
-                "Abmelden",
-                style: TextStyle(color: Colors.redAccent, fontSize: 14),
-              ),
+              label: const Text("Abmelden", style: TextStyle(color: Colors.redAccent, fontSize: 14)),
             ),
           ),
         ],

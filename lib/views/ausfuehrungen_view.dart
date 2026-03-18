@@ -34,12 +34,8 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
   @override
   void initState() {
     super.initState();
-    _selectedKW = _getISOWeek(DateTime.now());
+    _selectedKW = GiesAppLogik.getISOWeek(DateTime.now());
     _loadData();
-  }
-
-  int _getISOWeek(DateTime date) {
-    return GiesAppLogik.getISOWeek(date);
   }
 
   Future<void> _loadData() async {
@@ -61,12 +57,15 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
   void _applyFilter() {
     setState(() {
       var temp = _allData.where((item) {
-        if (item['orte'] == null) return false;
+        // orte jetzt über massnahmen
+        final ort = item['massnahmen']?['orte'];
+        if (ort == null) return false;
+
         final kfz = item['kennzeichen'] ?? "Ohne KFZ";
-        final stadtteil = item['orte']['strassen']?['stadtteil'] ?? "Unbekannt";
-        final strasse = (item['orte']['strassen']?['name'] ?? "").toString().toLowerCase();
-        final hnr = (item['orte']['hausnummer'] ?? "").toString().toLowerCase();
-        final beschr = (item['orte']['beschreibung_genau'] ?? "").toString().toLowerCase();
+        final stadtteil = ort['strassen']?['stadtteil'] ?? "Unbekannt";
+        final strasse = (ort['strassen']?['name'] ?? "").toString().toLowerCase();
+        final hnr = (ort['hausnummer'] ?? "").toString().toLowerCase();
+        final beschr = (ort['beschreibung_genau'] ?? "").toString().toLowerCase();
         final bool done = item['erledigt'] ?? false;
 
         bool matchesKfz = _selectedKennzeichen == "Alle KFZ" || kfz == _selectedKennzeichen;
@@ -86,8 +85,8 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
         bool aDone = a['erledigt'] ?? false;
         bool bDone = b['erledigt'] ?? false;
         if (aDone != bDone) return aDone ? 1 : -1;
-        String nameA = (a['orte']['strassen']?['name'] ?? a['orte']['beschreibung_genau'] ?? "").toString();
-        String nameB = (b['orte']['strassen']?['name'] ?? b['orte']['beschreibung_genau'] ?? "").toString();
+        String nameA = (a['massnahmen']?['orte']?['strassen']?['name'] ?? a['massnahmen']?['orte']?['beschreibung_genau'] ?? "").toString();
+        String nameB = (b['massnahmen']?['orte']?['strassen']?['name'] ?? b['massnahmen']?['orte']?['beschreibung_genau'] ?? "").toString();
         return nameA.compareTo(nameB);
       });
 
@@ -136,9 +135,9 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
 
   Future<void> _toggleStatus(Map<String, dynamic> item) async {
     final bool isDone = item['erledigt'] ?? false;
-    final ort = item['orte'];
-    final String name = ort['strassen']?['name'] ?? ort['beschreibung_genau'] ?? 'Ort';
-    final hnr = (ort['hausnummer'] == null || ort['hausnummer'] == 'null') ? "" : " ${ort['hausnummer']}";
+    final ort = item['massnahmen']?['orte'];
+    final String name = ort?['strassen']?['name'] ?? ort?['beschreibung_genau'] ?? 'Ort';
+    final hnr = (ort?['hausnummer'] == null || ort?['hausnummer'] == 'null') ? "" : " ${ort?['hausnummer']}";
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -176,7 +175,6 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
     }
   }
 
-  // Hilfsmethode: einheitliches Filter-Dropdown
   Widget _filterDropdown<T>({
     required String label,
     required T value,
@@ -229,7 +227,6 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            // Bulk-Aktionen wenn Auswahl aktiv
             if (_selectedIds.isNotEmpty) ...[
               ActionChip(
                 avatar: const Icon(Icons.undo, size: 16, color: Colors.white),
@@ -248,8 +245,6 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
               const SizedBox(height: 32, child: VerticalDivider(width: 1)),
               const SizedBox(width: 12),
             ],
-
-            // Filter-Dropdowns
             _filterDropdown<String>(
               label: "Status",
               icon: Icons.filter_list,
@@ -300,8 +295,8 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
   @override
   Widget build(BuildContext context) {
     final kfzListe = ["Alle KFZ", ..._allData.map((e) => e['kennzeichen']?.toString()).whereType<String>().toSet()].toList()..sort();
-    final stadtteilListe = ["Alle Stadtteile", ..._allData.map((e) => e['orte']?['strassen']?['stadtteil']?.toString()).whereType<String>().toSet()].toList()..sort();
-    final int currentKW = _getISOWeek(DateTime.now());
+    final stadtteilListe = ["Alle Stadtteile", ..._allData.map((e) => e['massnahmen']?['orte']?['strassen']?['stadtteil']?.toString()).whereType<String>().toSet()].toList()..sort();
+    final int currentKW = GiesAppLogik.getISOWeek(DateTime.now());
 
     return Scaffold(
       appBar: AppBar(
@@ -311,7 +306,6 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
           ? const Center(child: CircularProgressIndicator())
           : Row(
               children: [
-                // LINKE LISTE
                 Expanded(
                   flex: 3,
                   child: Column(
@@ -333,7 +327,6 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
                   ),
                 ),
                 const VerticalDivider(width: 1),
-                // RECHTE KARTE mit Filterleiste
                 Expanded(
                   flex: 6,
                   child: Column(
@@ -359,9 +352,11 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
         final done = item['erledigt'] ?? false;
         final isSelected = _selectedIds.contains(idStr);
 
-        final String rawStrasse = item['orte']['strassen']?['name'] ?? '';
-        final String hnr = (item['orte']['hausnummer'] == null || item['orte']['hausnummer'] == 'null') ? "" : " ${item['orte']['hausnummer']}";
-        final String beschr = item['orte']['beschreibung_genau'] ?? '';
+        // orte jetzt über massnahmen
+        final ort = item['massnahmen']?['orte'];
+        final String rawStrasse = ort?['strassen']?['name'] ?? '';
+        final String hnr = (ort?['hausnummer'] == null || ort?['hausnummer'] == 'null') ? "" : " ${ort?['hausnummer']}";
+        final String beschr = ort?['beschreibung_genau'] ?? '';
         final String taetigkeit = item['massnahmen']?['taetigkeiten']?['beschreibung_kurz'] ?? 'Gießen';
         String title = rawStrasse.isNotEmpty ? "$rawStrasse$hnr" : (beschr.isNotEmpty ? beschr : "Ort ID: $idStr");
 
@@ -385,10 +380,10 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
                   Text(beschr, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
                 Text("$taetigkeit | ${DateFormat('dd.MM.').format(DateTime.parse(item['geplant_am']))} | ${item['kennzeichen'] ?? '-'}"),
                 if ((item['massnahmen']?['auftragsnummer'] ?? '').toString().isNotEmpty)
-  Text(
-    "Auftrag: ${item['massnahmen']?['auftragsnummer']}",
-    style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
-  ),
+                  Text(
+                    "Auftrag: ${item['massnahmen']?['auftragsnummer']}",
+                    style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
+                  ),
               ],
             ),
             trailing: IconButton(
@@ -400,7 +395,11 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
                 _selectedIds.clear();
                 _selectedIds.add(idStr);
               });
-              _mapController.move(LatLng(item['orte']['latitude'], item['orte']['longitude']), 18.0);
+              final lat = ort?['latitude'];
+              final lng = ort?['longitude'];
+              if (lat != null && lng != null) {
+                _mapController.move(LatLng(lat, lng), 18.0);
+              }
             },
           ),
         );
@@ -426,8 +425,11 @@ class _AusfuehrungenViewState extends State<AusfuehrungenView> {
                 final bool done = item['erledigt'] ?? false;
                 final bool isSelected = _selectedIds.contains(idStr);
 
-                final double baseLat = item['orte']['latitude'];
-                final double baseLng = item['orte']['longitude'];
+                final ort = item['massnahmen']?['orte'];
+                if (ort == null) return const Marker(point: LatLng(0, 0), child: SizedBox.shrink());
+
+                final double baseLat = ort['latitude'] ?? 0.0;
+                final double baseLng = ort['longitude'] ?? 0.0;
                 final String coordKey = "${baseLat}_$baseLng";
 
                 int count = coordCounter[coordKey] ?? 0;

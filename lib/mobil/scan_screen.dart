@@ -80,7 +80,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
   /// Dialog zur Bestätigung
   Future<void> _zeigeBestaetigung(dynamic ausfuehrung) async {
-    final ort = ausfuehrung['orte'];
+    final ort = ausfuehrung['massnahmen']?['orte'];
     final String strasse = "${ort?['strassen']?['name'] ?? 'Unbekannt'} ${ort?['hausnummer'] ?? ''}";
     final String beschr = ort?['beschreibung_genau'] ?? '';
     final String taetigkeit = ausfuehrung['massnahmen']?['taetigkeiten']?['beschreibung_kurz'] ?? 'Gießen';

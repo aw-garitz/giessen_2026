@@ -11,6 +11,7 @@ class GiesAppLogik {
   }
 
   /// Lädt alle Ausführungen einer KW – wird von Web UND Mobile verwendet
+  /// orte kommt über massnahmen (nicht mehr direkt über ausfuehrung)
   static Future<List<dynamic>> ladeAusfuehrungenProKW(int kw) async {
     try {
       final start = _getStartOfKW(kw);
@@ -20,13 +21,13 @@ class GiesAppLogik {
 
       final res = await supabase.from('ausfuehrung').select('''
         id, erledigt, geplant_am, kennzeichen, massnahme_id,
-        orte (
-          id, beschreibung_genau, hausnummer, latitude, longitude,
-          strassen:strasse_id (name, stadtteil)
-        ),
         massnahmen (
           id,
           auftragsnummer,
+          orte (
+            id, beschreibung_genau, hausnummer, latitude, longitude,
+            strassen:strasse_id (name, stadtteil)
+          ),
           taetigkeiten:taetigkeit_id (beschreibung_kurz, intervall_tage)
         )
       ''')
@@ -44,7 +45,6 @@ class GiesAppLogik {
   }
 
   /// Planung einer kompletten Saison ab einem Startdatum
-  /// Wird von MassnahmenView beim Erstellen und Bearbeiten verwendet
   static Future<void> planeSaison({
     required String massnahmeId,
     required DateTime startDatum,
@@ -56,7 +56,6 @@ class GiesAppLogik {
       final int jahr = startDatum.year;
       final DateTime saisonEnde = DateTime(jahr, 11, 30, 23, 59);
 
-      // Offene Termine löschen falls gewünscht (bei Update)
       if (loescheOffene) {
         await supabase
             .from('ausfuehrung')
@@ -65,7 +64,7 @@ class GiesAppLogik {
             .eq('erledigt', false);
       }
 
-      // Bereits vorhandene Termine laden (erledigte) um Duplikate zu vermeiden
+      // Bereits vorhandene Termine laden um Duplikate zu vermeiden
       final bereitsVorhanden = await supabase
           .from('ausfuehrung')
           .select('geplant_am')
@@ -75,7 +74,6 @@ class GiesAppLogik {
           .map((e) => e['geplant_am'].toString().substring(0, 10))
           .toSet();
 
-      // Termine generieren – nur wenn Datum noch nicht vorhanden
       List<Map<String, dynamic>> neueTermine = [];
       DateTime naechsterTermin = startDatum;
 
@@ -103,7 +101,7 @@ class GiesAppLogik {
     }
   }
 
-
+  /// Fahrzeuge laden
   static Future<List<String>> ladeAlleKFZ() async {
     try {
       final res = await supabase.from('fahrzeuge').select('kennzeichen').order('kennzeichen');
@@ -130,7 +128,7 @@ class GiesAppLogik {
         'kennzeichen': bereinigtesKfz,
       }).eq('id', ausfuehrung['id']);
 
-      // 2. Alle zukünftigen offenen Termine dieser Maßnahme löschen
+      // 2. Alle zukünftigen offenen Termine löschen
       await supabase
           .from('ausfuehrung')
           .delete()
@@ -139,23 +137,35 @@ class GiesAppLogik {
           .gt('geplant_am', nun.toIso8601String())
           .lte('geplant_am', DateTime(jahr, 12, 31).toIso8601String());
 
-      // 3. Saison neu berechnen
+      // 3. Bereits vorhandene Termine laden um Duplikate zu vermeiden
+      final bereitsVorhanden = await supabase
+          .from('ausfuehrung')
+          .select('geplant_am')
+          .eq('massnahme_id', massnahmeId);
+
+      final Set<String> vorhandeneDaten = (bereitsVorhanden as List)
+          .map((e) => e['geplant_am'].toString().substring(0, 10))
+          .toSet();
+
+      // 4. Saison neu berechnen
       final int intervall = ausfuehrung['massnahmen']?['taetigkeiten']?['intervall_tage'] ?? 7;
       List<Map<String, dynamic>> neueTermine = [];
-
       DateTime naechsterCheck = nun.add(Duration(days: intervall));
 
       while (naechsterCheck.isBefore(saisonEnde) || naechsterCheck.isAtSameMomentAs(saisonEnde)) {
-        neueTermine.add({
-          'massnahme_id': massnahmeId,
-          'geplant_am': naechsterCheck.toIso8601String(),
-          'erledigt': false,
-          'kennzeichen': bereinigtesKfz,
-        });
+        final datumStr = DateFormat('yyyy-MM-dd').format(naechsterCheck);
+        if (!vorhandeneDaten.contains(datumStr)) {
+          neueTermine.add({
+            'massnahme_id': massnahmeId,
+            'geplant_am': datumStr,
+            'erledigt': false,
+            'kennzeichen': bereinigtesKfz,
+          });
+        }
         naechsterCheck = naechsterCheck.add(Duration(days: intervall));
       }
 
-      // 4. Neue Termine in einem Rutsch einfügen
+      // 5. Neue Termine einfügen
       if (neueTermine.isNotEmpty) {
         await supabase.from('ausfuehrung').insert(neueTermine);
       }
@@ -226,10 +236,19 @@ class GiesAppLogik {
         basisDatum = DateTime.parse(ausfuehrung['geplant_am']);
       }
 
-      // 5. Kette wiederherstellen
+      // 5. Bereits vorhandene Termine laden um Duplikate zu vermeiden
+      final bereitsVorhanden = await supabase
+          .from('ausfuehrung')
+          .select('geplant_am')
+          .eq('massnahme_id', massnahmeId);
+
+      final Set<String> vorhandeneDaten = (bereitsVorhanden as List)
+          .map((e) => e['geplant_am'].toString().substring(0, 10))
+          .toSet();
+
+      // 6. Kette wiederherstellen
       final int intervall = ausfuehrung['massnahmen']?['taetigkeiten']?['intervall_tage'] ?? 7;
       List<Map<String, dynamic>> wiederhergestellteTermine = [];
-
       DateTime naechsterCheck = basisDatum.add(Duration(days: intervall));
 
       if (naechsterCheck.isBefore(DateTime.now())) {
@@ -237,16 +256,19 @@ class GiesAppLogik {
       }
 
       while (naechsterCheck.isBefore(saisonEnde)) {
-        wiederhergestellteTermine.add({
-          'massnahme_id': massnahmeId,
-          'geplant_am': naechsterCheck.toIso8601String(),
-          'erledigt': false,
-          'kennzeichen': ausfuehrung['kennzeichen'],
-        });
+        final datumStr = DateFormat('yyyy-MM-dd').format(naechsterCheck);
+        if (!vorhandeneDaten.contains(datumStr)) {
+          wiederhergestellteTermine.add({
+            'massnahme_id': massnahmeId,
+            'geplant_am': datumStr,
+            'erledigt': false,
+            'kennzeichen': ausfuehrung['kennzeichen'],
+          });
+        }
         naechsterCheck = naechsterCheck.add(Duration(days: intervall));
       }
 
-      // 6. In die Datenbank schreiben
+      // 7. In die Datenbank schreiben
       if (wiederhergestellteTermine.isNotEmpty) {
         await supabase.from('ausfuehrung').insert(wiederhergestellteTermine);
       }
