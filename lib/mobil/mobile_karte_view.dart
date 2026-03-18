@@ -11,10 +11,10 @@ class MobileKarteView extends StatefulWidget {
   final VoidCallback onJumpToScanner;
 
   const MobileKarteView({
-    super.key, 
-    required this.selectedKW, 
+    super.key,
+    required this.selectedKW,
     this.selectedKFZ,
-    required this.onJumpToScanner
+    required this.onJumpToScanner,
   });
 
   @override
@@ -36,7 +36,6 @@ class _MobileKarteViewState extends State<MobileKarteView> {
   @override
   void didUpdateWidget(MobileKarteView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Wenn die KW oder das KFZ im Filter geändert wird, Daten neu laden
     if (oldWidget.selectedKW != widget.selectedKW || oldWidget.selectedKFZ != widget.selectedKFZ) {
       _ladeAusfuehrungen();
     }
@@ -46,13 +45,9 @@ class _MobileKarteViewState extends State<MobileKarteView> {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      // Nutzt die bestehende Ladelogik aus deiner fn_allgemein
       final daten = await GiesAppLogik.ladeAusfuehrungenProKW(widget.selectedKW);
-      
       if (mounted) {
         setState(() {
-          // Optional: Hier könnte man noch nach widget.selectedKFZ filtern, 
-          // falls ladeAusfuehrungenProKW das noch nicht tut.
           _ausfuehrungen = daten;
           _isLoading = false;
         });
@@ -63,32 +58,24 @@ class _MobileKarteViewState extends State<MobileKarteView> {
     }
   }
 
-  // --- NEUE LOGIK FÜR STATUS-UPDATE AUF DER KARTE ---
   Future<void> _updateStatus(dynamic a, bool neuerStatus) async {
     setState(() => _isLoading = true);
     try {
       if (neuerStatus) {
-        // 1. ERLEDIGEN & NEU PLANEN
-        // Nutzt die zentrale Logik inkl. Saison-Berechnung bis 03.11.
-        await GiesAppLogik.erledigenUndPlanen(
-          a, 
-          kfz: widget.selectedKFZ
-        );
+        // Erledigen & Saison neu planen bis 30.11.
+        await GiesAppLogik.erledigenUndPlanen(a, kfz: widget.selectedKFZ);
       } else {
-        // 2. RESET / RÜCKGÄNGIG
-        // Löscht die falsche Zukunft und stellt den alten Rhythmus wieder her
         await GiesAppLogik.resetToLastStatus(a);
       }
 
       if (mounted) {
-        Navigator.pop(context); // BottomSheet schließen
-        await _ladeAusfuehrungen(); // Karte aktualisieren
-        
+        Navigator.pop(context);
+        await _ladeAusfuehrungen();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(neuerStatus 
-              ? "Erledigt & Saison neu geplant" 
-              : "Status zurückgesetzt & Rhythmus wiederhergestellt"),
+            content: Text(neuerStatus
+                ? "Erledigt & Saison neu geplant"
+                : "Status zurückgesetzt & Rhythmus wiederhergestellt"),
             backgroundColor: neuerStatus ? Colors.green : Colors.orange,
             behavior: SnackBarBehavior.floating,
           ),
@@ -107,13 +94,10 @@ class _MobileKarteViewState extends State<MobileKarteView> {
 
   @override
   Widget build(BuildContext context) {
-    // Marker-Liste generieren
     final List<Marker> markers = _ausfuehrungen
         .where((a) {
           final ort = a['orte'];
-          return ort != null && 
-                 ort['latitude'] != null && 
-                 ort['longitude'] != null;
+          return ort != null && ort['latitude'] != null && ort['longitude'] != null;
         })
         .map((a) {
           final bool done = a['erledigt'] ?? false;
@@ -139,7 +123,7 @@ class _MobileKarteViewState extends State<MobileKarteView> {
     return Stack(
       children: [
         FlutterMap(
-          mapController: _mapController, 
+          mapController: _mapController,
           options: const MapOptions(
             initialCenter: LatLng(50.2015, 10.0765),
             initialZoom: 15,
@@ -156,7 +140,6 @@ class _MobileKarteViewState extends State<MobileKarteView> {
                 urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
                 subdomains: const ['a', 'b', 'c', 'd'],
               ),
-
             MarkerClusterLayerWidget(
               options: MarkerClusterLayerOptions(
                 maxClusterRadius: 45,
@@ -172,12 +155,8 @@ class _MobileKarteViewState extends State<MobileKarteView> {
                     ),
                     child: Center(
                       child: Text(
-                        localMarkers.length.toString(), 
-                        style: const TextStyle(
-                          color: Colors.white, 
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12
-                        ),
+                        localMarkers.length.toString(),
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
                       ),
                     ),
                   );
@@ -186,7 +165,6 @@ class _MobileKarteViewState extends State<MobileKarteView> {
             ),
           ],
         ),
-        
         Positioned(
           bottom: 20, right: 20,
           child: FloatingActionButton(
@@ -196,7 +174,6 @@ class _MobileKarteViewState extends State<MobileKarteView> {
             child: Icon(_showSatellite ? Icons.map : Icons.layers, color: Colors.blue[800]),
           ),
         ),
-        
         if (_isLoading) const Center(child: CircularProgressIndicator()),
       ],
     );
@@ -208,9 +185,9 @@ class _MobileKarteViewState extends State<MobileKarteView> {
     final String strasse = "${ort?['strassen']?['name'] ?? 'Unbekannt'} ${ort?['hausnummer'] ?? ''}";
     final String beschr = ort?['beschreibung_genau'] ?? 'Keine Details';
     final String taetigkeit = a['massnahmen']?['taetigkeiten']?['beschreibung_kurz'] ?? 'Pflege';
-    
-    final String geplant = a['geplant_am'] != null 
-        ? DateFormat('dd.MM.yyyy').format(DateTime.parse(a['geplant_am'])) 
+    final String auftrag = (a['massnahmen']?['auftragsnummer'] ?? '').toString();
+    final String geplant = a['geplant_am'] != null
+        ? DateFormat('dd.MM.yyyy').format(DateTime.parse(a['geplant_am']))
         : '---';
 
     showModalBottomSheet(
@@ -219,8 +196,8 @@ class _MobileKarteViewState extends State<MobileKarteView> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         decoration: const BoxDecoration(
-          color: Colors.white, 
-          borderRadius: BorderRadius.vertical(top: Radius.circular(30))
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
         ),
         padding: EdgeInsets.fromLTRB(25, 12, 25, MediaQuery.of(ctx).padding.bottom + 30),
         child: Column(
@@ -229,19 +206,19 @@ class _MobileKarteViewState extends State<MobileKarteView> {
           children: [
             Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
             Text(strasse, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            Text("Details: $beschr", style: const TextStyle(fontSize: 16, color: Colors.blueGrey)),
+            const SizedBox(height: 6),
+            Text(beschr, style: const TextStyle(fontSize: 16, color: Colors.blueGrey)),
             const Divider(height: 30),
             _infoItem(Icons.calendar_today, "Geplant", geplant),
             _infoItem(Icons.task_alt, "Aufgabe", taetigkeit),
+            if (auftrag.isNotEmpty) _infoItem(Icons.assignment, "Auftrag", auftrag),
             const SizedBox(height: 30),
-            
             if (!erledigt) ...[
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[700], foregroundColor: Colors.white, 
+                    backgroundColor: Colors.green[700], foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 18),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                   ),

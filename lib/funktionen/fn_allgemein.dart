@@ -65,17 +65,30 @@ class GiesAppLogik {
             .eq('erledigt', false);
       }
 
-      // Termine generieren
+      // Bereits vorhandene Termine laden (erledigte) um Duplikate zu vermeiden
+      final bereitsVorhanden = await supabase
+          .from('ausfuehrung')
+          .select('geplant_am')
+          .eq('massnahme_id', massnahmeId);
+
+      final Set<String> vorhandeneDaten = (bereitsVorhanden as List)
+          .map((e) => e['geplant_am'].toString().substring(0, 10))
+          .toSet();
+
+      // Termine generieren – nur wenn Datum noch nicht vorhanden
       List<Map<String, dynamic>> neueTermine = [];
       DateTime naechsterTermin = startDatum;
 
       while (naechsterTermin.isBefore(saisonEnde) || naechsterTermin.isAtSameMomentAs(saisonEnde)) {
-        neueTermine.add({
-          'massnahme_id': massnahmeId,
-          'geplant_am': DateFormat('yyyy-MM-dd').format(naechsterTermin),
-          'erledigt': false,
-          'kennzeichen': kennzeichen,
-        });
+        final datumStr = DateFormat('yyyy-MM-dd').format(naechsterTermin);
+        if (!vorhandeneDaten.contains(datumStr)) {
+          neueTermine.add({
+            'massnahme_id': massnahmeId,
+            'geplant_am': datumStr,
+            'erledigt': false,
+            'kennzeichen': kennzeichen,
+          });
+        }
         naechsterTermin = naechsterTermin.add(Duration(days: intervall));
       }
 
