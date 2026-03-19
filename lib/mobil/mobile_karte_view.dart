@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:giessen_app/funktionen/fn_allgemein.dart';
+import 'package:giessen_app/funktionen/offline_sync_service.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:intl/intl.dart';
 
@@ -9,12 +10,14 @@ class MobileKarteView extends StatefulWidget {
   final int selectedKW;
   final String? selectedKFZ;
   final VoidCallback onJumpToScanner;
+  final VoidCallback? onOfflineVorgangGespeichert;
 
   const MobileKarteView({
     super.key,
     required this.selectedKW,
     this.selectedKFZ,
     required this.onJumpToScanner,
+    this.onOfflineVorgangGespeichert,
   });
 
   @override
@@ -38,10 +41,8 @@ class _MobileKarteViewState extends State<MobileKarteView> {
   void didUpdateWidget(MobileKarteView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selectedKW != widget.selectedKW) {
-      // KW geändert → neu laden
       _ladeAusfuehrungen();
     } else if (oldWidget.selectedKFZ != widget.selectedKFZ) {
-      // Nur KFZ geändert → nur filtern
       _filterAnwenden();
     }
   }
@@ -82,20 +83,36 @@ class _MobileKarteViewState extends State<MobileKarteView> {
   Future<void> _updateStatus(dynamic a, bool neuerStatus) async {
     setState(() => _isLoading = true);
     try {
-      if (neuerStatus) {
-        await GiesAppLogik.erledigenUndPlanen(a, kfz: widget.selectedKFZ);
+      final online = await OfflineSyncService.istOnline();
+
+      if (online) {
+        if (neuerStatus) {
+          await GiesAppLogik.erledigenUndPlanen(a, kfz: widget.selectedKFZ);
+        } else {
+          await GiesAppLogik.resetToLastStatus(a);
+        }
       } else {
-        await GiesAppLogik.resetToLastStatus(a);
+        await OfflineSyncService.speichereLokal(
+          ausfuehrung: a,
+          typ: neuerStatus ? 'erledigt' : 'reset',
+          kfz: widget.selectedKFZ,
+        );
+        widget.onOfflineVorgangGespeichert?.call();
       }
+
       if (mounted) {
         Navigator.pop(context);
         await _ladeAusfuehrungen();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(neuerStatus
-                ? "Erledigt & Saison neu geplant"
-                : "Status zurückgesetzt & Rhythmus wiederhergestellt"),
-            backgroundColor: neuerStatus ? Colors.green : Colors.orange,
+            content: Row(children: [
+              Icon(online ? Icons.cloud_done : Icons.cloud_off, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Text(online
+                  ? (neuerStatus ? "Erledigt & synchronisiert" : "Zurückgesetzt")
+                  : "Offline gespeichert – wird bei Verbindung synchronisiert"),
+            ]),
+            backgroundColor: online ? (neuerStatus ? Colors.green : Colors.orange) : Colors.blueGrey,
             behavior: SnackBarBehavior.floating,
           ),
         );

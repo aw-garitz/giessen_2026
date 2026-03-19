@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:giessen_app/funktionen/fn_allgemein.dart'; 
+import 'package:giessen_app/funktionen/fn_allgemein.dart';
+import 'package:giessen_app/funktionen/offline_sync_service.dart';
 
 class ScanScreen extends StatefulWidget {
   final int ausgewaehlteKW;
   final String ausgewaehltesKFZ;
+  final VoidCallback? onOfflineVorgangGespeichert;
 
   const ScanScreen({
     super.key,
     required this.ausgewaehlteKW,
     required this.ausgewaehltesKFZ,
+    this.onOfflineVorgangGespeichert,
   });
 
   @override
@@ -20,14 +23,9 @@ class _ScanScreenState extends State<ScanScreen> {
   bool _isProcessing = false;
   DateTime? _lastScanTime;
 
-  /// Verarbeitet den Scan-Vorgang
   Future<void> _onDetect(BarcodeCapture capture) async {
     final now = DateTime.now();
-
-    // 1. Throttle: Verhindert Mehrfachscans (2 Sek. Sperre)
-    if (_lastScanTime != null && now.difference(_lastScanTime!).inSeconds < 2) {
-      return;
-    }
+    if (_lastScanTime != null && now.difference(_lastScanTime!).inSeconds < 2) return;
     if (_isProcessing) return;
 
     final List<Barcode> barcodes = capture.barcodes;
@@ -36,7 +34,6 @@ class _ScanScreenState extends State<ScanScreen> {
     final String? code = barcodes.first.displayValue;
     if (code == null) return;
 
-    // FEHLER-PRÄVENTION: Fahrzeug-Check (Löst den FK-Constraint Fehler aus dem Screenshot)
     if (widget.ausgewaehltesKFZ == "Alle KFZ" || widget.ausgewaehltesKFZ.isEmpty) {
       _zeigeFehler("Bitte wähle im Hauptmenü erst ein Fahrzeug aus!");
       return;
@@ -48,23 +45,18 @@ class _ScanScreenState extends State<ScanScreen> {
     });
 
     try {
-      // 2. Daten für die aktuelle Woche laden
       final alleAusfuehrungen = await GiesAppLogik.ladeAusfuehrungenProKW(widget.ausgewaehlteKW);
-      
-      // 3. Suche nach der Massnahme_ID (Vermeidet den Iterable-Null-Fehler)
+
       final treffer = alleAusfuehrungen.where(
         (a) => a['massnahme_id'].toString() == code && a['erledigt'] == false
       ).toList();
 
       if (treffer.isNotEmpty) {
-        // Erfolg: Ort gefunden
         await _zeigeBestaetigung(treffer.first);
       } else {
-        // Check, ob es den Code gibt, aber er schon erledigt ist
         final schonFertig = alleAusfuehrungen.any(
           (a) => a['massnahme_id'].toString() == code && a['erledigt'] == true
         );
-        
         if (schonFertig) {
           _zeigeInfo("Dieser Baum wurde in KW ${widget.ausgewaehlteKW} bereits gegossen.");
         } else {
@@ -78,10 +70,9 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
-  /// Dialog zur Bestätigung
   Future<void> _zeigeBestaetigung(dynamic ausfuehrung) async {
     final ort = ausfuehrung['massnahmen']?['orte'];
-    final String strasse = "${ort?['strassen']?['name'] ?? 'Unbekannt'} ${ort?['hausnummer'] ?? ''}";
+    final String strasse = "${ort?['strassen']?['name'] ?? 'Unbekannt'} ${ort?['hausnummer'] ?? ''}".trim();
     final String beschr = ort?['beschreibung_genau'] ?? '';
     final String taetigkeit = ausfuehrung['massnahmen']?['taetigkeiten']?['beschreibung_kurz'] ?? 'Gießen';
 
@@ -131,23 +122,49 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
-  /// Speichert die Erledigung und plant die Saison neu
   Future<void> _bucheAb(dynamic ausfuehrung) async {
     setState(() => _isProcessing = true);
     try {
-      await GiesAppLogik.erledigenUndPlanen(
-        ausfuehrung,
-        kfz: widget.ausgewaehltesKFZ,
-      );
+      final online = await OfflineSyncService.istOnline();
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Erfolgreich gebucht & Saison aktualisiert!"),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-          ),
+      if (online) {
+        await GiesAppLogik.erledigenUndPlanen(
+          ausfuehrung,
+          kfz: widget.ausgewaehltesKFZ,
         );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(children: [
+                Icon(Icons.cloud_done, color: Colors.white, size: 18),
+                SizedBox(width: 8),
+                Text("Erfolgreich gebucht & synchronisiert"),
+              ]),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } else {
+        await OfflineSyncService.speichereLokal(
+          ausfuehrung: ausfuehrung,
+          typ: 'erledigt',
+          kfz: widget.ausgewaehltesKFZ,
+        );
+        widget.onOfflineVorgangGespeichert?.call();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(children: [
+                Icon(Icons.cloud_off, color: Colors.white, size: 18),
+                SizedBox(width: 8),
+                Text("Offline gespeichert – wird bei Verbindung synchronisiert"),
+              ]),
+              backgroundColor: Colors.blueGrey,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
     } catch (e) {
       _zeigeFehler("Fehler beim Speichern: $e");
@@ -187,7 +204,6 @@ class _ScanScreenState extends State<ScanScreen> {
             ),
             onDetect: _onDetect,
           ),
-          // Scanner-Overlay
           Container(
             decoration: ShapeDecoration(
               shape: QrScannerOverlayShape(
@@ -199,18 +215,12 @@ class _ScanScreenState extends State<ScanScreen> {
               ),
             ),
           ),
-          // Info-Badge oben
           Positioned(
-            top: 30,
-            left: 0,
-            right: 0,
+            top: 30, left: 0, right: 0,
             child: Center(
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.black87,
-                  borderRadius: BorderRadius.circular(20),
-                ),
+                decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(20)),
                 child: Text(
                   "KW ${widget.ausgewaehlteKW} | ${widget.ausgewaehltesKFZ}",
                   style: const TextStyle(color: Colors.white, fontSize: 14),
@@ -226,7 +236,6 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 }
 
-/// Custom Border für das Scanner-Sichtfeld
 class QrScannerOverlayShape extends ShapeBorder {
   final Color borderColor;
   final double borderRadius;

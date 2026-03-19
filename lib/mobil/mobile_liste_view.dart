@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:giessen_app/funktionen/fn_allgemein.dart';
+import 'package:giessen_app/funktionen/offline_sync_service.dart';
 import 'package:intl/intl.dart';
 
 class MobileTourListeView extends StatefulWidget {
@@ -7,6 +8,7 @@ class MobileTourListeView extends StatefulWidget {
   final String? selectedKFZ;
   final VoidCallback? onJumpToScanner;
   final ValueChanged<int>? onCountChanged;
+  final VoidCallback? onOfflineVorgangGespeichert;
 
   const MobileTourListeView({
     super.key,
@@ -14,6 +16,7 @@ class MobileTourListeView extends StatefulWidget {
     this.selectedKFZ,
     this.onJumpToScanner,
     this.onCountChanged,
+    this.onOfflineVorgangGespeichert,
   });
 
   @override
@@ -35,10 +38,8 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
   void didUpdateWidget(MobileTourListeView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selectedKW != widget.selectedKW) {
-      // KW geändert → neu laden
       _ladeDaten();
     } else if (oldWidget.selectedKFZ != widget.selectedKFZ) {
-      // Nur KFZ geändert → nur filtern, kein neuer DB-Request
       _filterAnwenden();
     }
   }
@@ -61,46 +62,68 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
     }
   }
 
-void _filterAnwenden() {
-  final kfz = widget.selectedKFZ;
-  List<dynamic> gefiltert;
+  void _filterAnwenden() {
+    final kfz = widget.selectedKFZ;
+    List<dynamic> gefiltert;
 
-  if (kfz == null || kfz == "Alle") {
-    gefiltert = List.from(_alleAusfuehrungen);
-  } else {
-    gefiltert = _alleAusfuehrungen
-        .where((item) => item['kennzeichen']?.toString() == kfz)
-        .toList();
+    if (kfz == null || kfz == "Alle") {
+      gefiltert = List.from(_alleAusfuehrungen);
+    } else {
+      gefiltert = _alleAusfuehrungen
+          .where((item) => item['kennzeichen']?.toString() == kfz)
+          .toList();
+    }
+
+    setState(() => _gefilterteAusfuehrungen = gefiltert);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.onCountChanged?.call(gefiltert.length);
+    });
   }
-
-  setState(() => _gefilterteAusfuehrungen = gefiltert);
-
-  // Callback NACH dem Build aufrufen – verhindert setState during build
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    widget.onCountChanged?.call(gefiltert.length);
-  });
-}
 
   Future<void> _updateStatus(dynamic item, bool neuerStatus) async {
     setState(() => _isLoading = true);
     try {
-      if (neuerStatus) {
-        await GiesAppLogik.erledigenUndPlanen(item, kfz: widget.selectedKFZ);
+      final online = await OfflineSyncService.istOnline();
+
+      if (online) {
+        if (neuerStatus) {
+          await GiesAppLogik.erledigenUndPlanen(item, kfz: widget.selectedKFZ);
+        } else {
+          await GiesAppLogik.resetToLastStatus(item);
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(neuerStatus ? "Erledigt & Saison neu geplant" : "Status zurückgesetzt"),
+              backgroundColor: neuerStatus ? Colors.green : Colors.orange,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       } else {
-        await GiesAppLogik.resetToLastStatus(item);
-      }
-      if (mounted) {
-        await _ladeDaten();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(neuerStatus
-                ? "Erledigt & Saison neu geplant"
-                : "Status zurückgesetzt & Rhythmus wiederhergestellt"),
-            backgroundColor: neuerStatus ? Colors.green : Colors.orange,
-            behavior: SnackBarBehavior.floating,
-          ),
+        await OfflineSyncService.speichereLokal(
+          ausfuehrung: item,
+          typ: neuerStatus ? 'erledigt' : 'reset',
+          kfz: widget.selectedKFZ,
         );
+        widget.onOfflineVorgangGespeichert?.call();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(children: const [
+                Icon(Icons.cloud_off, color: Colors.white, size: 18),
+                SizedBox(width: 8),
+                Text("Offline gespeichert – wird bei Verbindung synchronisiert"),
+              ]),
+              backgroundColor: Colors.blueGrey,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
+
+      if (mounted) await _ladeDaten();
     } catch (e) {
       debugPrint("Update Fehler Liste: $e");
       if (mounted) {
