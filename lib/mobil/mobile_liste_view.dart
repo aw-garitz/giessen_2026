@@ -95,7 +95,7 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(neuerStatus ? "Erledigt & Saison neu geplant" : "Status zurückgesetzt"),
+              content: Text(neuerStatus ? "Erledigt & neu geplant" : "Zurückgesetzt"),
               backgroundColor: neuerStatus ? Colors.green : Colors.orange,
               behavior: SnackBarBehavior.floating,
             ),
@@ -110,12 +110,8 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
         widget.onOfflineVorgangGespeichert?.call();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(children: const [
-                Icon(Icons.cloud_off, color: Colors.white, size: 18),
-                SizedBox(width: 8),
-                Text("Offline gespeichert – wird bei Verbindung synchronisiert"),
-              ]),
+            const SnackBar(
+              content: Text("Offline gespeichert – sync bei WLAN"),
               backgroundColor: Colors.blueGrey,
               behavior: SnackBarBehavior.floating,
             ),
@@ -135,7 +131,7 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
     }
   }
 
-  void _zeigeAktionsDialog(dynamic item) {
+  void _zeigeAktionsDialog(dynamic item, double w, double h) {
     final bool done = item['erledigt'] ?? false;
     final ort = item['massnahmen']?['orte'];
     final String strasse = "${ort?['strassen']?['name'] ?? ''} ${ort?['hausnummer'] ?? ''}".trim();
@@ -152,40 +148,47 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
         ),
-        padding: EdgeInsets.fromLTRB(25, 15, 25, MediaQuery.of(ctx).padding.bottom + 30),
+        padding: EdgeInsets.fromLTRB(w * 0.06, h * 0.02, w * 0.06, MediaQuery.of(ctx).padding.bottom + h * 0.04),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(child: Container(width: 45, height: 5, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
-            Text(strasse, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            Center(child: Container(
+              width: w * 0.12, height: h * 0.006,
+              margin: EdgeInsets.only(bottom: h * 0.025),
+              decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)),
+            )),
+            Text(strasse, style: TextStyle(fontSize: w * 0.055, fontWeight: FontWeight.bold)),
             if (beschreibung.isNotEmpty)
-              Padding(padding: const EdgeInsets.only(top: 8), child: Text(beschreibung, style: const TextStyle(fontSize: 16, color: Colors.blueGrey))),
-            const Divider(height: 30),
-            _detailRow(Icons.task_alt, "Aufgabe", taetigkeit, Colors.black),
+              Padding(
+                padding: EdgeInsets.only(top: h * 0.01),
+                child: Text(beschreibung, style: TextStyle(fontSize: w * 0.04, color: Colors.blueGrey)),
+              ),
+            Divider(height: h * 0.04),
+            _detailRow(Icons.task_alt, "Aufgabe", taetigkeit, Colors.black, w),
             if (auftrag.isNotEmpty)
-              _detailRow(Icons.assignment, "Auftrag", auftrag, Colors.blueGrey),
-            const SizedBox(height: 35),
+              _detailRow(Icons.assignment, "Auftrag", auftrag, Colors.blueGrey, w),
+            SizedBox(height: h * 0.04),
             if (!done) ...[
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green[700], foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    padding: EdgeInsets.symmetric(vertical: h * 0.022),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                   ),
                   onPressed: () { Navigator.pop(ctx); _updateStatus(item, true); },
                   icon: const Icon(Icons.check_circle_outline),
-                  label: const Text("JETZT ERLEDIGEN", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  label: Text("JETZT ERLEDIGEN", style: TextStyle(fontSize: w * 0.04, fontWeight: FontWeight.bold)),
                 ),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: h * 0.015),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    padding: EdgeInsets.symmetric(vertical: h * 0.022),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                   ),
                   onPressed: () {
@@ -193,7 +196,7 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
                     if (widget.onJumpToScanner != null) widget.onJumpToScanner!();
                   },
                   icon: const Icon(Icons.qr_code_scanner),
-                  label: const Text("SCANNER ÖFFNEN"),
+                  label: Text("SCANNER ÖFFNEN", style: TextStyle(fontSize: w * 0.04)),
                 ),
               ),
             ] else ...[
@@ -202,12 +205,12 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.orange[800], foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    padding: EdgeInsets.symmetric(vertical: h * 0.022),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                   ),
                   onPressed: () { Navigator.pop(ctx); _updateStatus(item, false); },
                   icon: const Icon(Icons.settings_backup_restore),
-                  label: const Text("AUF OFFEN ZURÜCKSETZEN", style: TextStyle(fontWeight: FontWeight.bold)),
+                  label: Text("AUF OFFEN ZURÜCKSETZEN", style: TextStyle(fontSize: w * 0.038, fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
@@ -217,20 +220,23 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
     );
   }
 
-  Widget _detailRow(IconData icon, String label, String value, Color valColor) {
+  Widget _detailRow(IconData icon, String label, String value, Color valColor, double w) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.only(bottom: w * 0.02),
       child: Row(children: [
-        Icon(icon, size: 18, color: Colors.grey),
-        const SizedBox(width: 10),
-        Text("$label: ", style: const TextStyle(fontSize: 14)),
-        Expanded(child: Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: valColor))),
+        Icon(icon, size: w * 0.045, color: Colors.grey),
+        SizedBox(width: w * 0.025),
+        Text("$label: ", style: TextStyle(fontSize: w * 0.035)),
+        Expanded(child: Text(value, style: TextStyle(fontSize: w * 0.035, fontWeight: FontWeight.bold, color: valColor))),
       ]),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    final h = MediaQuery.of(context).size.height;
+
     if (_isLoading) return const Center(child: CircularProgressIndicator());
 
     if (_gefilterteAusfuehrungen.isEmpty) {
@@ -238,9 +244,10 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.assignment_turned_in_outlined, size: 60, color: Colors.grey[300]),
-            const SizedBox(height: 10),
-            Text("Keine Aufgaben für KW ${widget.selectedKW} gefunden."),
+            Icon(Icons.assignment_turned_in_outlined, size: w * 0.15, color: Colors.grey[300]),
+            SizedBox(height: h * 0.015),
+            Text("Keine Aufgaben für KW ${widget.selectedKW} gefunden.",
+                style: TextStyle(fontSize: w * 0.035)),
           ],
         ),
       );
@@ -249,7 +256,7 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
     return RefreshIndicator(
       onRefresh: _ladeDaten,
       child: ListView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: EdgeInsets.symmetric(horizontal: w * 0.025, vertical: h * 0.01),
         itemCount: _gefilterteAusfuehrungen.length,
         itemBuilder: (ctx, i) {
           final item = _gefilterteAusfuehrungen[i];
@@ -267,56 +274,56 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
           return Card(
             elevation: done ? 0 : 1,
             color: done ? Colors.green.shade50 : Colors.white,
-            margin: const EdgeInsets.only(bottom: 6),
+            margin: EdgeInsets.only(bottom: h * 0.008),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
               side: BorderSide(color: done ? Colors.green.shade200 : Colors.grey.shade200),
             ),
             child: InkWell(
-              onTap: () => _zeigeAktionsDialog(item),
+              onTap: () => _zeigeAktionsDialog(item, w, h),
               borderRadius: BorderRadius.circular(10),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: EdgeInsets.symmetric(horizontal: w * 0.03, vertical: h * 0.012),
                 child: Row(
                   children: [
                     Icon(
                       done ? Icons.check_circle : Icons.radio_button_unchecked,
                       color: done ? Colors.green : Colors.grey.shade400,
-                      size: 22,
+                      size: w * 0.055,
                     ),
-                    const SizedBox(width: 10),
+                    SizedBox(width: w * 0.025),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(strassenName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          Text(strassenName, style: TextStyle(fontWeight: FontWeight.bold, fontSize: w * 0.038)),
                           if (beschreibungGenau.isNotEmpty)
-                            Text(beschreibungGenau, style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontStyle: FontStyle.italic)),
-                          const SizedBox(height: 4),
+                            Text(beschreibungGenau, style: TextStyle(fontSize: w * 0.03, color: Colors.grey.shade600, fontStyle: FontStyle.italic)),
+                          SizedBox(height: h * 0.005),
                           Row(
                             children: [
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                padding: EdgeInsets.symmetric(horizontal: w * 0.015, vertical: h * 0.003),
                                 decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(4)),
-                                child: Text(taetigkeitKurz, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue.shade900)),
+                                child: Text(taetigkeitKurz, style: TextStyle(fontSize: w * 0.025, fontWeight: FontWeight.bold, color: Colors.blue.shade900)),
                               ),
                               if (auftrag.isNotEmpty) ...[
-                                const SizedBox(width: 6),
+                                SizedBox(width: w * 0.015),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  padding: EdgeInsets.symmetric(horizontal: w * 0.015, vertical: h * 0.003),
                                   decoration: BoxDecoration(color: Colors.blueGrey.shade50, borderRadius: BorderRadius.circular(4)),
-                                  child: Text(auftrag, style: TextStyle(fontSize: 10, color: Colors.blueGrey.shade700)),
+                                  child: Text(auftrag, style: TextStyle(fontSize: w * 0.025, color: Colors.blueGrey.shade700)),
                                 ),
                               ],
                               const Spacer(),
                               if (datum.isNotEmpty)
-                                Text(datum, style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                                Text(datum, style: TextStyle(fontSize: w * 0.028, color: Colors.grey.shade500)),
                             ],
                           ),
                         ],
                       ),
                     ),
-                    const Icon(Icons.chevron_right, color: Colors.grey, size: 18),
+                    Icon(Icons.chevron_right, color: Colors.grey, size: w * 0.045),
                   ],
                 ),
               ),

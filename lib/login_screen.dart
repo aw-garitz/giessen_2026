@@ -14,11 +14,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   late TabController _tabController;
   final supabase = Supabase.instance.client;
 
-  // Login
   final _loginEmailController = TextEditingController();
   final _loginPasswortController = TextEditingController();
-
-  // Registrierung
   final _regEmailController = TextEditingController();
   final _regNameController = TextEditingController();
   final _regPasswortController = TextEditingController();
@@ -46,20 +43,16 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     super.dispose();
   }
 
-  // --- LOGIN ---
   Future<void> _login() async {
     final email = _loginEmailController.text.trim();
     final passwort = _loginPasswortController.text.trim();
-
     if (email.isEmpty || passwort.isEmpty) {
       _zeigeFehler("Bitte E-Mail und Passwort eingeben.");
       return;
     }
-
     setState(() => _isLoading = true);
     try {
       await supabase.auth.signInWithPassword(email: email, password: passwort);
-      // AuthCheck in main.dart reagiert automatisch auf den Login
     } on AuthException catch (e) {
       _zeigeFehler(_uebersetzeFehler(e.message));
     } catch (e) {
@@ -69,7 +62,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     }
   }
 
-  // --- REGISTRIERUNG ---
   Future<void> _registrieren() async {
     final email = _regEmailController.text.trim();
     final name = _regNameController.text.trim();
@@ -85,51 +77,43 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       return;
     }
     if (passwort.length < 6) {
-      _zeigeFehler("Passwort muss mindestens 6 Zeichen haben.");
+      _zeigeFehler("Passwort mindestens 6 Zeichen.");
       return;
     }
 
     setState(() => _isLoading = true);
     try {
       final res = await supabase.auth.signUp(email: email, password: passwort);
-
       if (res.user != null) {
-        // Profil anlegen mit dem eingegebenen Namen
         await ProfilService.erstelleProfil(
           userId: res.user!.id,
           displayName: name,
-          rolle: 'fahrer', // Neue User sind standardmäßig Fahrer
+          rolle: 'fahrer',
         );
       }
-
       if (mounted) {
-        _zeigeInfo("Registrierung erfolgreich! Bitte E-Mail bestätigen falls erforderlich.");
-        _tabController.animateTo(0); // Zurück zum Login-Tab
+        _zeigeInfo("Registrierung erfolgreich!");
+        _tabController.animateTo(0);
       }
     } on AuthException catch (e) {
       _zeigeFehler(_uebersetzeFehler(e.message));
     } catch (e) {
-      _zeigeFehler("Unbekannter Fehler: $e");
+      _zeigeFehler("Fehler: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // --- PASSWORT VERGESSEN ---
   Future<void> _passwortVergessen() async {
     final email = _loginEmailController.text.trim();
-
     if (email.isEmpty) {
-      _zeigeFehler("Bitte zuerst die E-Mail Adresse eingeben.");
+      _zeigeFehler("Bitte zuerst E-Mail eingeben.");
       return;
     }
-
     setState(() => _isLoading = true);
     try {
       await supabase.auth.resetPasswordForEmail(email);
-      if (mounted) {
-        _zeigeInfo("Reset-Link wurde an $email gesendet.");
-      }
+      if (mounted) _zeigeInfo("Reset-Link wurde an $email gesendet.");
     } on AuthException catch (e) {
       _zeigeFehler(_uebersetzeFehler(e.message));
     } finally {
@@ -137,12 +121,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     }
   }
 
-  // --- FEHLER ÜBERSETZEN ---
   String _uebersetzeFehler(String message) {
     if (message.contains('Invalid login credentials')) return "E-Mail oder Passwort falsch.";
-    if (message.contains('Email not confirmed')) return "Bitte zuerst die E-Mail bestätigen.";
-    if (message.contains('User already registered')) return "Diese E-Mail ist bereits registriert.";
-    if (message.contains('Password should be')) return "Passwort zu schwach. Mindestens 6 Zeichen.";
+    if (message.contains('Email not confirmed')) return "Bitte E-Mail bestätigen.";
+    if (message.contains('User already registered')) return "E-Mail bereits registriert.";
+    if (message.contains('Password should be')) return "Passwort zu schwach.";
     return message;
   }
 
@@ -162,28 +145,31 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    final h = MediaQuery.of(context).size.height;
+
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.all(w * 0.06),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Logo / Header
-                const Icon(Icons.water_drop, size: 64, color: Color(0xFF2E7D32)),
-                const SizedBox(height: 12),
-                const Text(
+                // Logo
+                Icon(Icons.water_drop, size: w * 0.16, color: const Color(0xFF2E7D32)),
+                SizedBox(height: h * 0.015),
+                Text(
                   "BK Logistik",
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF2E7D32)),
+                  style: TextStyle(fontSize: w * 0.07, fontWeight: FontWeight.bold, color: const Color(0xFF2E7D32)),
                 ),
-                const Text(
+                Text(
                   "Gieß-App 2026",
-                  style: TextStyle(fontSize: 14, color: Colors.black54),
+                  style: TextStyle(fontSize: w * 0.035, color: Colors.black54),
                 ),
-                const SizedBox(height: 40),
+                SizedBox(height: h * 0.05),
 
                 // Card mit Tabs
                 Card(
@@ -191,12 +177,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   child: Column(
                     children: [
-                      // Tab-Bar
                       TabBar(
                         controller: _tabController,
                         labelColor: const Color(0xFF2E7D32),
                         unselectedLabelColor: Colors.grey,
                         indicatorColor: const Color(0xFF2E7D32),
+                        labelStyle: TextStyle(fontSize: w * 0.038),
                         tabs: const [
                           Tab(text: "Anmelden"),
                           Tab(text: "Registrieren"),
@@ -204,129 +190,139 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       ),
                       const Divider(height: 1),
 
-                      // Tab-Inhalt
                       SizedBox(
-                        height: 360,
+                        height: h * 0.45,
                         child: TabBarView(
                           controller: _tabController,
                           children: [
-                            // --- LOGIN TAB ---
+                            // LOGIN TAB
                             Padding(
-                              padding: const EdgeInsets.all(24),
+                              padding: EdgeInsets.all(w * 0.06),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   TextField(
                                     controller: _loginEmailController,
                                     keyboardType: TextInputType.emailAddress,
-                                    decoration: const InputDecoration(
+                                    style: TextStyle(fontSize: w * 0.038),
+                                    decoration: InputDecoration(
                                       labelText: "E-Mail",
-                                      prefixIcon: Icon(Icons.email_outlined),
-                                      border: OutlineInputBorder(),
+                                      labelStyle: TextStyle(fontSize: w * 0.035),
+                                      prefixIcon: Icon(Icons.email_outlined, size: w * 0.05),
+                                      border: const OutlineInputBorder(),
                                     ),
                                   ),
-                                  const SizedBox(height: 16),
+                                  SizedBox(height: h * 0.02),
                                   TextField(
                                     controller: _loginPasswortController,
                                     obscureText: !_loginPasswortSichtbar,
+                                    style: TextStyle(fontSize: w * 0.038),
                                     onSubmitted: (_) => _login(),
                                     decoration: InputDecoration(
                                       labelText: "Passwort",
-                                      prefixIcon: const Icon(Icons.lock_outlined),
+                                      labelStyle: TextStyle(fontSize: w * 0.035),
+                                      prefixIcon: Icon(Icons.lock_outlined, size: w * 0.05),
                                       border: const OutlineInputBorder(),
                                       suffixIcon: IconButton(
-                                        icon: Icon(_loginPasswortSichtbar ? Icons.visibility_off : Icons.visibility),
+                                        icon: Icon(_loginPasswortSichtbar ? Icons.visibility_off : Icons.visibility, size: w * 0.05),
                                         onPressed: () => setState(() => _loginPasswortSichtbar = !_loginPasswortSichtbar),
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(height: 8),
                                   Align(
                                     alignment: Alignment.centerRight,
                                     child: TextButton(
                                       onPressed: _isLoading ? null : _passwortVergessen,
-                                      child: const Text("Passwort vergessen?"),
+                                      child: Text("Passwort vergessen?", style: TextStyle(fontSize: w * 0.033)),
                                     ),
                                   ),
-                                  const SizedBox(height: 8),
+                                  SizedBox(height: h * 0.01),
                                   ElevatedButton(
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: const Color(0xFF2E7D32),
                                       foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 14),
+                                      padding: EdgeInsets.symmetric(vertical: h * 0.018),
                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                     ),
                                     onPressed: _isLoading ? null : _login,
                                     child: _isLoading
-                                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                        : const Text("Anmelden", style: TextStyle(fontSize: 16)),
+                                        ? SizedBox(height: w * 0.05, width: w * 0.05, child: const CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                        : Text("Anmelden", style: TextStyle(fontSize: w * 0.04)),
                                   ),
                                 ],
                               ),
                             ),
 
-                            // --- REGISTRIEREN TAB ---
+                            // REGISTRIEREN TAB
                             Padding(
-                              padding: const EdgeInsets.all(24),
+                              padding: EdgeInsets.all(w * 0.06),
                               child: SingleChildScrollView(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.stretch,
                                   children: [
                                     TextField(
                                       controller: _regNameController,
-                                      decoration: const InputDecoration(
+                                      style: TextStyle(fontSize: w * 0.038),
+                                      decoration: InputDecoration(
                                         labelText: "Dein Name",
-                                        prefixIcon: Icon(Icons.person_outlined),
-                                        border: OutlineInputBorder(),
+                                        labelStyle: TextStyle(fontSize: w * 0.035),
+                                        prefixIcon: Icon(Icons.person_outlined, size: w * 0.05),
+                                        border: const OutlineInputBorder(),
                                       ),
                                     ),
-                                    const SizedBox(height: 12),
+                                    SizedBox(height: h * 0.015),
                                     TextField(
                                       controller: _regEmailController,
                                       keyboardType: TextInputType.emailAddress,
-                                      decoration: const InputDecoration(
+                                      style: TextStyle(fontSize: w * 0.038),
+                                      decoration: InputDecoration(
                                         labelText: "E-Mail",
-                                        prefixIcon: Icon(Icons.email_outlined),
-                                        border: OutlineInputBorder(),
+                                        labelStyle: TextStyle(fontSize: w * 0.035),
+                                        prefixIcon: Icon(Icons.email_outlined, size: w * 0.05),
+                                        border: const OutlineInputBorder(),
                                       ),
                                     ),
-                                    const SizedBox(height: 12),
+                                    SizedBox(height: h * 0.015),
                                     TextField(
                                       controller: _regPasswortController,
                                       obscureText: !_regPasswortSichtbar,
+                                      style: TextStyle(fontSize: w * 0.038),
                                       decoration: InputDecoration(
                                         labelText: "Passwort",
-                                        prefixIcon: const Icon(Icons.lock_outlined),
+                                        labelStyle: TextStyle(fontSize: w * 0.035),
+                                        prefixIcon: Icon(Icons.lock_outlined, size: w * 0.05),
                                         border: const OutlineInputBorder(),
                                         suffixIcon: IconButton(
-                                          icon: Icon(_regPasswortSichtbar ? Icons.visibility_off : Icons.visibility),
+                                          icon: Icon(_regPasswortSichtbar ? Icons.visibility_off : Icons.visibility, size: w * 0.05),
                                           onPressed: () => setState(() => _regPasswortSichtbar = !_regPasswortSichtbar),
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(height: 12),
+                                    SizedBox(height: h * 0.015),
                                     TextField(
                                       controller: _regPasswortWiederholungController,
                                       obscureText: true,
+                                      style: TextStyle(fontSize: w * 0.038),
                                       onSubmitted: (_) => _registrieren(),
-                                      decoration: const InputDecoration(
+                                      decoration: InputDecoration(
                                         labelText: "Passwort wiederholen",
-                                        prefixIcon: Icon(Icons.lock_outlined),
-                                        border: OutlineInputBorder(),
+                                        labelStyle: TextStyle(fontSize: w * 0.035),
+                                        prefixIcon: Icon(Icons.lock_outlined, size: w * 0.05),
+                                        border: const OutlineInputBorder(),
                                       ),
                                     ),
-                                    const SizedBox(height: 16),
+                                    SizedBox(height: h * 0.02),
                                     ElevatedButton(
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: const Color(0xFF2E7D32),
                                         foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(vertical: 14),
+                                        padding: EdgeInsets.symmetric(vertical: h * 0.018),
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                       ),
                                       onPressed: _isLoading ? null : _registrieren,
                                       child: _isLoading
-                                          ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                          : const Text("Registrieren", style: TextStyle(fontSize: 16)),
+                                          ? SizedBox(height: w * 0.05, width: w * 0.05, child: const CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                          : Text("Registrieren", style: TextStyle(fontSize: w * 0.04)),
                                     ),
                                   ],
                                 ),

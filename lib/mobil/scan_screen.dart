@@ -35,7 +35,7 @@ class _ScanScreenState extends State<ScanScreen> {
     if (code == null) return;
 
     if (widget.ausgewaehltesKFZ == "Alle KFZ" || widget.ausgewaehltesKFZ.isEmpty) {
-      _zeigeFehler("Bitte wähle im Hauptmenü erst ein Fahrzeug aus!");
+      _zeigeFehler("Bitte erst ein Fahrzeug auswählen!");
       return;
     }
 
@@ -58,19 +58,22 @@ class _ScanScreenState extends State<ScanScreen> {
           (a) => a['massnahme_id'].toString() == code && a['erledigt'] == true
         );
         if (schonFertig) {
-          _zeigeInfo("Dieser Baum wurde in KW ${widget.ausgewaehlteKW} bereits gegossen.");
+          _zeigeInfo("KW ${widget.ausgewaehlteKW}: bereits erledigt.");
         } else {
-          _zeigeFehler("ID $code: In KW ${widget.ausgewaehlteKW} nicht im Plan gefunden.");
+          _zeigeFehler("KW ${widget.ausgewaehlteKW}: nicht im Plan.");
         }
       }
     } catch (e) {
-      _zeigeFehler("Datenbank-Fehler: $e");
+      _zeigeFehler("Fehler: $e");
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
   }
 
   Future<void> _zeigeBestaetigung(dynamic ausfuehrung) async {
+    final w = MediaQuery.of(context).size.width;
+    final h = MediaQuery.of(context).size.height;
+
     final ort = ausfuehrung['massnahmen']?['orte'];
     final String strasse = "${ort?['strassen']?['name'] ?? 'Unbekannt'} ${ort?['hausnummer'] ?? ''}".trim();
     final String beschr = ort?['beschreibung_genau'] ?? '';
@@ -81,41 +84,43 @@ class _ScanScreenState extends State<ScanScreen> {
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.qr_code_scanner, color: Colors.blue),
-            SizedBox(width: 10),
-            Text("Ort bestätigt"),
+            Icon(Icons.qr_code_scanner, color: Colors.blue, size: w * 0.06),
+            SizedBox(width: w * 0.025),
+            Text("Ort bestätigt", style: TextStyle(fontSize: w * 0.045)),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(strasse, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            if (beschr.isNotEmpty) Text(beschr, style: const TextStyle(color: Colors.blueGrey)),
-            const Divider(height: 30),
-            Text("Aktion: $taetigkeit", style: const TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            Text("Fahrzeug: ${widget.ausgewaehltesKFZ}"),
+            Text(strasse, style: TextStyle(fontSize: w * 0.045, fontWeight: FontWeight.bold)),
+            if (beschr.isNotEmpty)
+              Text(beschr, style: TextStyle(fontSize: w * 0.035, color: Colors.blueGrey)),
+            Divider(height: h * 0.04),
+            Text("Aktion: $taetigkeit", style: TextStyle(fontSize: w * 0.038, fontWeight: FontWeight.bold)),
+            SizedBox(height: h * 0.01),
+            Text("Fahrzeug: ${widget.ausgewaehltesKFZ}", style: TextStyle(fontSize: w * 0.035)),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("Abbrechen"),
+            child: Text("Abbrechen", style: TextStyle(fontSize: w * 0.035)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green[700],
               foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(horizontal: w * 0.05, vertical: h * 0.015),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             onPressed: () async {
               Navigator.pop(ctx);
               await _bucheAb(ausfuehrung);
             },
-            child: const Text("Jetzt buchen"),
+            child: Text("Jetzt buchen", style: TextStyle(fontSize: w * 0.038)),
           ),
         ],
       ),
@@ -135,11 +140,7 @@ class _ScanScreenState extends State<ScanScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Row(children: [
-                Icon(Icons.cloud_done, color: Colors.white, size: 18),
-                SizedBox(width: 8),
-                Text("Erfolgreich gebucht & synchronisiert"),
-              ]),
+              content: Text("Gebucht & synchronisiert ✅"),
               backgroundColor: Colors.green,
               behavior: SnackBarBehavior.floating,
             ),
@@ -155,11 +156,7 @@ class _ScanScreenState extends State<ScanScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Row(children: [
-                Icon(Icons.cloud_off, color: Colors.white, size: 18),
-                SizedBox(width: 8),
-                Text("Offline gespeichert – wird bei Verbindung synchronisiert"),
-              ]),
+              content: Text("Offline gespeichert – sync bei WLAN"),
               backgroundColor: Colors.blueGrey,
               behavior: SnackBarBehavior.floating,
             ),
@@ -167,7 +164,7 @@ class _ScanScreenState extends State<ScanScreen> {
         }
       }
     } catch (e) {
-      _zeigeFehler("Fehler beim Speichern: $e");
+      _zeigeFehler("Fehler: $e");
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
@@ -189,9 +186,12 @@ class _ScanScreenState extends State<ScanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    final h = MediaQuery.of(context).size.height;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text("QR-Code scannen"),
+        title: Text("QR-Code scannen", style: TextStyle(fontSize: w * 0.045)),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
       ),
@@ -209,21 +209,26 @@ class _ScanScreenState extends State<ScanScreen> {
               shape: QrScannerOverlayShape(
                 borderColor: Colors.blue,
                 borderRadius: 20,
-                borderLength: 30,
-                borderWidth: 6,
-                cutOutSize: 260,
+                borderLength: w * 0.08,
+                borderWidth: w * 0.015,
+                cutOutSize: w * 0.65,
               ),
             ),
           ),
+          // Info-Badge oben
           Positioned(
-            top: 30, left: 0, right: 0,
+            top: h * 0.04,
+            left: 0, right: 0,
             child: Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(20)),
+                padding: EdgeInsets.symmetric(horizontal: w * 0.04, vertical: h * 0.012),
+                decoration: BoxDecoration(
+                  color: Colors.black87,
+                  borderRadius: BorderRadius.circular(20),
+                ),
                 child: Text(
                   "KW ${widget.ausgewaehlteKW} | ${widget.ausgewaehltesKFZ}",
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  style: TextStyle(color: Colors.white, fontSize: w * 0.035),
                 ),
               ),
             ),
