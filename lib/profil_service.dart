@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 class ProfilService {
   static final supabase = Supabase.instance.client;
 
+  /// Das Standard-Passwort für die Erst-Anmeldung (muss im Supabase Dashboard so vergeben werden)
+  static const String defaultInitialPassword = 'Start_123';
+
   /// Lädt das Profil des aktuell eingeloggten Users
   static Future<Map<String, dynamic>?> ladeProfil() async {
     try {
@@ -12,7 +15,7 @@ class ProfilService {
 
       final res = await supabase
           .from('profiles')
-          .select('id, display_name, rolle')
+          .select('id, display_name, rolle, muss_passwort_aendern')
           .eq('id', userId)
           .maybeSingle();
 
@@ -34,6 +37,7 @@ class ProfilService {
         'id': userId,
         'display_name': displayName,
         'rolle': rolle,
+        'muss_passwort_aendern': true, // Standardmäßig bei Neuanlage erzwingen
       });
     } catch (e) {
       debugPrint("❌ Fehler beim Erstellen des Profils: $e");
@@ -52,6 +56,39 @@ class ProfilService {
           .eq('id', userId);
     } catch (e) {
       debugPrint("❌ Fehler beim Aktualisieren des Namens: $e");
+    }
+  }
+
+  /// Ermöglicht es dem Admin, das Passwort-Flag für einen Nutzer zurückzusetzen (erzwingt Änderung beim nächsten Login)
+  static Future<void> erzwingePasswortAenderung(String targetUserId) async {
+    try {
+      await supabase
+          .from('profiles')
+          .update({'muss_passwort_aendern': true})
+          .eq('id', targetUserId);
+    } catch (e) {
+      debugPrint("❌ Fehler beim Zurücksetzen des Passwort-Flags: $e");
+    }
+  }
+
+  /// Ändert das Passwort des aktuell angemeldeten Benutzers
+  static Future<bool> passwortAendern(String neuesPasswort) async {
+    try {
+      // 1. Passwort in Supabase Auth aktualisieren
+      await supabase.auth.updateUser(UserAttributes(password: neuesPasswort));
+
+      // 2. Flag in der Datenbank zurücksetzen
+      final userId = supabase.auth.currentUser?.id;
+      if (userId != null) {
+        await supabase
+            .from('profiles')
+            .update({'muss_passwort_aendern': false})
+            .eq('id', userId);
+      }
+      return true;
+    } catch (e) {
+      debugPrint("❌ Fehler beim Ändern des Passworts: $e");
+      return false;
     }
   }
 

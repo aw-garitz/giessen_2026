@@ -23,7 +23,7 @@ class _MitarbeiterViewState extends State<MitarbeiterView> {
     try {
       if (!mounted) return;
       setState(() => _isLoading = true);
-      
+
       final data = await supabase
           .from('mitarbeiter')
           .select()
@@ -38,7 +38,9 @@ class _MitarbeiterViewState extends State<MitarbeiterView> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Fehler: $e')));
       }
     }
   }
@@ -46,8 +48,12 @@ class _MitarbeiterViewState extends State<MitarbeiterView> {
   // Dialog für Hinzufügen & Bearbeiten
   void _zeigeEditor({Map<String, dynamic>? person}) {
     final isEdit = person != null;
-    final vornameController = TextEditingController(text: person?['vorname'] ?? '');
-    final nachnameController = TextEditingController(text: person?['nachname'] ?? '');
+    final vornameController = TextEditingController(
+      text: person?['vorname'] ?? '',
+    );
+    final nachnameController = TextEditingController(
+      text: person?['nachname'] ?? '',
+    );
 
     showDialog(
       context: context,
@@ -68,12 +74,15 @@ class _MitarbeiterViewState extends State<MitarbeiterView> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Abbrechen'),
+          ),
           ElevatedButton(
             onPressed: () async {
               final vName = vornameController.text.trim();
               final nName = nachnameController.text.trim();
-              
+
               if (vName.isEmpty || nName.isEmpty) return;
 
               try {
@@ -83,16 +92,23 @@ class _MitarbeiterViewState extends State<MitarbeiterView> {
                       .update({'vorname': vName, 'nachname': nName})
                       .eq('mitarbeiter_id', person['mitarbeiter_id']);
                 } else {
-                  await supabase
-                      .from('mitarbeiter')
-                      .insert({'vorname': vName, 'nachname': nName});
+                  await supabase.from('mitarbeiter').insert({
+                    'vorname': vName,
+                    'nachname': nName,
+                  });
                 }
                 if (mounted) {
                   Navigator.pop(ctx);
+                }
+                if (mounted) {
                   _fetchMitarbeiter();
                 }
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler beim Speichern: $e')));
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Fehler beim Speichern: $e')),
+                  );
+                }
               }
             },
             child: const Text('Speichern'),
@@ -110,10 +126,13 @@ class _MitarbeiterViewState extends State<MitarbeiterView> {
         title: const Text('Löschen bestätigen'),
         content: Text('Mitarbeiter "$name" wirklich entfernen?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Nein')),
           TextButton(
-            onPressed: () => Navigator.pop(ctx, true), 
-            child: const Text('Löschen', style: TextStyle(color: Colors.red))
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Nein'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Löschen', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -124,7 +143,11 @@ class _MitarbeiterViewState extends State<MitarbeiterView> {
         await supabase.from('mitarbeiter').delete().eq('mitarbeiter_id', id);
         _fetchMitarbeiter();
       } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+        }
       }
     }
   }
@@ -135,43 +158,54 @@ class _MitarbeiterViewState extends State<MitarbeiterView> {
       appBar: AppBar(
         title: const Text('Mitarbeiter-Verwaltung'),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchMitarbeiter),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _fetchMitarbeiter,
+          ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _mitarbeiter.isEmpty
-              ? const Center(child: Text('Keine Mitarbeiter gefunden.'))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _mitarbeiter.length,
-                  itemBuilder: (context, index) {
-                    final m = _mitarbeiter[index];
-                    return Card(
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.blue.shade100,
-                          child: Text(m['nachname'][0].toUpperCase()),
+          ? const Center(child: Text('Keine Mitarbeiter gefunden.'))
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _mitarbeiter.length,
+              itemBuilder: (context, index) {
+                final m = _mitarbeiter[index];
+                return Card(
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.blue.shade100,
+                      child: Text(m['nachname'][0].toUpperCase()),
+                    ),
+                    title: Text('${m['vorname']} ${m['nachname']}'),
+                    subtitle: Text(
+                      'ID: ${m['mitarbeiter_id'].toString().split('-')[0]}...',
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit, color: Colors.blue),
+                          onPressed: () => _zeigeEditor(person: m),
                         ),
-                        title: Text('${m['vorname']} ${m['nachname']}'),
-                        subtitle: Text('ID: ${m['mitarbeiter_id'].toString().split('-')[0]}...'),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.blue),
-                              onPressed: () => _zeigeEditor(person: m),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                              onPressed: () => _loeschen(m['mitarbeiter_id'], '${m['vorname']} ${m['nachname']}'),
-                            ),
-                          ],
+                        IconButton(
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.redAccent,
+                          ),
+                          onPressed: () => _loeschen(
+                            m['mitarbeiter_id'],
+                            '${m['vorname']} ${m['nachname']}',
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _zeigeEditor(),
         backgroundColor: Colors.green,

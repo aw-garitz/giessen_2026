@@ -40,7 +40,9 @@ class _StrassenViewState extends State<StrassenView> {
   void _zeigeStrassenDialog({Map<String, dynamic>? strasse}) {
     final bool isEdit = strasse != null;
     final nameController = TextEditingController(text: strasse?['name'] ?? "");
-    final stadtteilController = TextEditingController(text: strasse?['stadtteil'] ?? "");
+    final stadtteilController = TextEditingController(
+      text: strasse?['stadtteil'] ?? "",
+    );
 
     showDialog(
       context: context,
@@ -67,11 +69,14 @@ class _StrassenViewState extends State<StrassenView> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Abbrechen")),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Abbrechen"),
+          ),
           ElevatedButton(
             onPressed: () async {
               if (nameController.text.isEmpty) return;
-              
+
               final data = {
                 'name': nameController.text,
                 'stadtteil': stadtteilController.text,
@@ -79,12 +84,17 @@ class _StrassenViewState extends State<StrassenView> {
 
               try {
                 if (isEdit) {
-                  await supabase.from('strassen').update(data).eq('id', strasse['id']);
+                  await supabase
+                      .from('strassen')
+                      .update(data)
+                      .eq('id', strasse['id']);
                 } else {
                   await supabase.from('strassen').insert(data);
                 }
-                Navigator.pop(ctx);
-                _loadStrassen();
+                if (mounted) {
+                  Navigator.pop(ctx);
+                  _loadStrassen();
+                }
               } catch (e) {
                 debugPrint("Fehler beim Speichern: $e");
               }
@@ -105,7 +115,10 @@ class _StrassenViewState extends State<StrassenView> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Straßenverzeichnis", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+              const Text(
+                "Straßenverzeichnis",
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
               ElevatedButton.icon(
                 onPressed: () => _zeigeStrassenDialog(),
                 icon: const Icon(Icons.add_road),
@@ -122,16 +135,25 @@ class _StrassenViewState extends State<StrassenView> {
                   itemBuilder: (ctx, i) {
                     final s = _strassen[i];
                     return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 4,
+                      ),
                       child: ListTile(
                         leading: const CircleAvatar(
                           backgroundColor: Colors.blueGrey,
                           child: Icon(Icons.map, color: Colors.white),
                         ),
-                        title: Text(s['name'] ?? "Unbekannte Straße", style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(s['stadtteil'] != null && s['stadtteil'].toString().isNotEmpty 
-                          ? "Stadtteil: ${s['stadtteil']}" 
-                          : "Kein Stadtteil hinterlegt"),
+                        title: Text(
+                          s['name'] ?? "Unbekannte Straße",
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text(
+                          s['stadtteil'] != null &&
+                                  s['stadtteil'].toString().isNotEmpty
+                              ? "Stadtteil: ${s['stadtteil']}"
+                              : "Kein Stadtteil hinterlegt",
+                        ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -140,23 +162,39 @@ class _StrassenViewState extends State<StrassenView> {
                               onPressed: () => _zeigeStrassenDialog(strasse: s),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.red),
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.red,
+                              ),
                               onPressed: () async {
                                 // Sicherheitsabfrage vor dem Löschen
                                 final confirm = await showDialog<bool>(
                                   context: context,
                                   builder: (ctx) => AlertDialog(
                                     title: const Text("Straße löschen?"),
-                                    content: Text("Möchten Sie '${s['name']}' wirklich entfernen?"),
+                                    content: Text(
+                                      "Möchten Sie '${s['name']}' wirklich entfernen?",
+                                    ),
                                     actions: [
-                                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Nein")),
-                                      TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Ja, löschen")),
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(ctx, false),
+                                        child: const Text("Nein"),
+                                      ),
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(ctx, true),
+                                        child: const Text("Ja, löschen"),
+                                      ),
                                     ],
                                   ),
                                 );
 
                                 if (confirm == true) {
-                                  await supabase.from('strassen').delete().eq('id', s['id']);
+                                  await supabase
+                                      .from('strassen')
+                                      .delete()
+                                      .eq('id', s['id']);
                                   _loadStrassen();
                                 }
                               },

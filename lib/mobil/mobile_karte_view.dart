@@ -9,14 +9,12 @@ import 'package:intl/intl.dart';
 class MobileKarteView extends StatefulWidget {
   final int selectedKW;
   final String? selectedKFZ;
-  final VoidCallback onJumpToScanner;
   final VoidCallback? onOfflineVorgangGespeichert;
 
   const MobileKarteView({
     super.key,
     required this.selectedKW,
     this.selectedKFZ,
-    required this.onJumpToScanner,
     this.onOfflineVorgangGespeichert,
   });
 
@@ -51,7 +49,9 @@ class _MobileKarteViewState extends State<MobileKarteView> {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      final daten = await GiesAppLogik.ladeAusfuehrungenProKW(widget.selectedKW);
+      final daten = await GiesAppLogik.ladeAusfuehrungenProKW(
+        widget.selectedKW,
+      );
       if (mounted) {
         setState(() {
           _alleAusfuehrungen = daten;
@@ -103,16 +103,31 @@ class _MobileKarteViewState extends State<MobileKarteView> {
       if (mounted) {
         Navigator.pop(context);
         await _ladeAusfuehrungen();
+      }
+
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Row(children: [
-              Icon(online ? Icons.cloud_done : Icons.cloud_off, color: Colors.white, size: 18),
-              const SizedBox(width: 8),
-              Text(online
-                  ? (neuerStatus ? "Erledigt & synchronisiert" : "Zurückgesetzt")
-                  : "Offline gespeichert – wird bei Verbindung synchronisiert"),
-            ]),
-            backgroundColor: online ? (neuerStatus ? Colors.green : Colors.orange) : Colors.blueGrey,
+            content: Row(
+              children: [
+                Icon(
+                  online ? Icons.cloud_done : Icons.cloud_off,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  online
+                      ? (neuerStatus
+                            ? "Erledigt & synchronisiert"
+                            : "Zurückgesetzt")
+                      : "Offline gespeichert – wird bei Verbindung synchronisiert",
+                ),
+              ],
+            ),
+            backgroundColor: online
+                ? (neuerStatus ? Colors.green : Colors.orange)
+                : Colors.blueGrey,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -133,13 +148,16 @@ class _MobileKarteViewState extends State<MobileKarteView> {
     final List<Marker> markers = _gefilterteAusfuehrungen
         .where((a) {
           final ort = a['massnahmen']?['orte'];
-          return ort != null && ort['latitude'] != null && ort['longitude'] != null;
+          return ort != null &&
+              ort['latitude'] != null &&
+              ort['longitude'] != null;
         })
         .map((a) {
           final bool done = a['erledigt'] ?? false;
           final ort = a['massnahmen']?['orte'];
           final double lat = double.tryParse(ort['latitude'].toString()) ?? 0.0;
-          final double lng = double.tryParse(ort['longitude'].toString()) ?? 0.0;
+          final double lng =
+              double.tryParse(ort['longitude'].toString()) ?? 0.0;
 
           return Marker(
             point: LatLng(lat, lng),
@@ -155,7 +173,8 @@ class _MobileKarteViewState extends State<MobileKarteView> {
               ),
             ),
           );
-        }).toList();
+        })
+        .toList();
 
     return Stack(
       children: [
@@ -167,14 +186,19 @@ class _MobileKarteViewState extends State<MobileKarteView> {
           ),
           children: [
             if (_showSatellite) ...[
-              TileLayer(urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'),
               TileLayer(
-                urlTemplate: 'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png',
+                urlTemplate:
+                    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+              ),
+              TileLayer(
+                urlTemplate:
+                    'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png',
                 subdomains: const ['a', 'b', 'c', 'd'],
               ),
             ] else
               TileLayer(
-                urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                urlTemplate:
+                    'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
                 subdomains: const ['a', 'b', 'c', 'd'],
               ),
             MarkerClusterLayerWidget(
@@ -187,13 +211,17 @@ class _MobileKarteViewState extends State<MobileKarteView> {
                   return Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.blue.withOpacity(0.9),
+                      color: Colors.blue.withValues(alpha: 0.9),
                       border: Border.all(color: Colors.white, width: 2),
                     ),
                     child: Center(
                       child: Text(
                         localMarkers.length.toString(),
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   );
@@ -203,12 +231,16 @@ class _MobileKarteViewState extends State<MobileKarteView> {
           ],
         ),
         Positioned(
-          bottom: 20, right: 20,
+          bottom: 20,
+          right: 20,
           child: FloatingActionButton(
             mini: true,
             backgroundColor: Colors.white,
             onPressed: () => setState(() => _showSatellite = !_showSatellite),
-            child: Icon(_showSatellite ? Icons.map : Icons.layers, color: Colors.blue[800]),
+            child: Icon(
+              _showSatellite ? Icons.map : Icons.layers,
+              color: Colors.blue[800],
+            ),
           ),
         ),
         if (_isLoading) const Center(child: CircularProgressIndicator()),
@@ -219,10 +251,14 @@ class _MobileKarteViewState extends State<MobileKarteView> {
   void _zeigeDetails(dynamic a) {
     final ort = a['massnahmen']?['orte'];
     final bool erledigt = a['erledigt'] ?? false;
-    final String strasse = "${ort?['strassen']?['name'] ?? 'Unbekannt'} ${ort?['hausnummer'] ?? ''}".trim();
+    final String strasse =
+        "${ort?['strassen']?['name'] ?? 'Unbekannt'} ${ort?['hausnummer'] ?? ''}"
+            .trim();
     final String beschr = ort?['beschreibung_genau'] ?? 'Keine Details';
-    final String taetigkeit = a['massnahmen']?['taetigkeiten']?['beschreibung_kurz'] ?? 'Pflege';
-    final String auftrag = (a['massnahmen']?['auftragsnummer'] ?? '').toString();
+    final String taetigkeit =
+        a['massnahmen']?['taetigkeiten']?['beschreibung_kurz'] ?? 'Pflege';
+    final String auftrag = (a['massnahmen']?['auftragsnummer'] ?? '')
+        .toString();
     final String geplant = a['geplant_am'] != null
         ? DateFormat('dd.MM.yyyy').format(DateTime.parse(a['geplant_am']))
         : '---';
@@ -236,32 +272,60 @@ class _MobileKarteViewState extends State<MobileKarteView> {
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
         ),
-        padding: EdgeInsets.fromLTRB(25, 12, 25, MediaQuery.of(ctx).padding.bottom + 30),
+        padding: EdgeInsets.fromLTRB(
+          25,
+          12,
+          25,
+          MediaQuery.of(ctx).padding.bottom + 30,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
-            Text(strasse, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Text(
+              strasse,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 6),
-            Text(beschr, style: const TextStyle(fontSize: 16, color: Colors.blueGrey)),
+            Text(
+              beschr,
+              style: const TextStyle(fontSize: 16, color: Colors.blueGrey),
+            ),
             const Divider(height: 30),
             _infoItem(Icons.calendar_today, "Geplant", geplant),
             _infoItem(Icons.task_alt, "Aufgabe", taetigkeit),
-            if (auftrag.isNotEmpty) _infoItem(Icons.assignment, "Auftrag", auftrag),
+            if (auftrag.isNotEmpty)
+              _infoItem(Icons.assignment, "Auftrag", auftrag),
             const SizedBox(height: 30),
             if (!erledigt) ...[
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[700], foregroundColor: Colors.white,
+                    backgroundColor: Colors.green[700],
+                    foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 18),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
                   ),
                   onPressed: () => _updateStatus(a, true),
                   icon: const Icon(Icons.check_circle_outline),
-                  label: const Text("ALS ERLEDIGT MARKIEREN", style: TextStyle(fontWeight: FontWeight.bold)),
+                  label: const Text(
+                    "ALS ERLEDIGT MARKIEREN",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
             ] else ...[
@@ -270,7 +334,9 @@ class _MobileKarteViewState extends State<MobileKarteView> {
                 child: OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 18),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
                   ),
                   onPressed: () => _updateStatus(a, false),
                   icon: const Icon(Icons.undo),

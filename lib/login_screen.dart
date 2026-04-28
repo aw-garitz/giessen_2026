@@ -1,7 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:giessen_app/profil_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -10,7 +10,8 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final supabase = Supabase.instance.client;
 
@@ -122,9 +123,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   String _uebersetzeFehler(String message) {
-    if (message.contains('Invalid login credentials')) return "E-Mail oder Passwort falsch.";
-    if (message.contains('Email not confirmed')) return "Bitte E-Mail bestätigen.";
-    if (message.contains('User already registered')) return "E-Mail bereits registriert.";
+    if (message.contains('Invalid login credentials')) {
+      return "E-Mail oder Passwort falsch.";
+    }
+    if (message.contains('Email not confirmed')) {
+      return "Bitte E-Mail bestätigen.";
+    }
+    if (message.contains('User already registered')) {
+      return "E-Mail bereits registriert.";
+    }
     if (message.contains('Password should be')) return "Passwort zu schwach.";
     return message;
   }
@@ -132,14 +139,116 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   void _zeigeFehler(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: Colors.red, behavior: SnackBarBehavior.floating),
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 
   void _zeigeInfo(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: Colors.green, behavior: SnackBarBehavior.floating),
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Widget _inputField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required double w,
+    required double h,
+    bool obscure = false,
+    bool? obscureToggle,
+    VoidCallback? onToggle,
+    TextInputType keyboardType = TextInputType.text,
+    VoidCallback? onSubmit,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: TextField(
+        controller: controller,
+        obscureText: obscureToggle != null ? !obscureToggle : obscure,
+        keyboardType: keyboardType,
+        style: TextStyle(fontSize: w * 0.04),
+        onSubmitted: onSubmit != null ? (_) => onSubmit() : null,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(
+            fontSize: w * 0.035,
+            color: Colors.grey.shade600,
+          ),
+          prefixIcon: Icon(
+            icon,
+            size: w * 0.05,
+            color: const Color(0xFF2E7D32),
+          ),
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: w * 0.04,
+            vertical: h * 0.018,
+          ),
+          suffixIcon: onToggle != null
+              ? IconButton(
+                  icon: Icon(
+                    obscureToggle! ? Icons.visibility : Icons.visibility_off,
+                    size: w * 0.05,
+                    color: Colors.grey.shade600,
+                  ),
+                  onPressed: onToggle,
+                )
+              : null,
+        ),
+      ),
+    );
+  }
+
+  Widget _anmeldenButton({
+    required double w,
+    required double h,
+    required String label,
+    required VoidCallback? onPressed,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF2E7D32),
+          foregroundColor: Colors.white,
+          padding: EdgeInsets.symmetric(vertical: h * 0.02),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 2,
+        ),
+        onPressed: onPressed,
+        child: _isLoading
+            ? SizedBox(
+                height: w * 0.05,
+                width: w * 0.05,
+                child: const CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              )
+            : Text(
+                label,
+                style: TextStyle(
+                  fontSize: w * 0.042,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+      ),
     );
   }
 
@@ -147,194 +256,255 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
     final h = MediaQuery.of(context).size.height;
+    // Auf Web ist w oft sehr groß – cap bei 420px für Berechnungen
+    final rw = w.clamp(0.0, 420.0);
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      body: Center(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.all(w * 0.06),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Logo
-                Icon(Icons.water_drop, size: w * 0.16, color: const Color(0xFF2E7D32)),
-                SizedBox(height: h * 0.015),
-                Text(
-                  "BK Logistik",
-                  style: TextStyle(fontSize: w * 0.07, fontWeight: FontWeight.bold, color: const Color(0xFF2E7D32)),
-                ),
-                Text(
-                  "Gieß-App 2026",
-                  style: TextStyle(fontSize: w * 0.035, color: Colors.black54),
-                ),
-                SizedBox(height: h * 0.05),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF2E7D32), Color(0xFF4CAF50), Color(0xFF81C784)],
+          ),
+        ),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(
+              horizontal: w * 0.06,
+              vertical: h * 0.04,
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Logo
+                  Container(
+                    padding: EdgeInsets.all(rw * 0.07),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.15),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      Icons.water_drop,
+                      size: rw * 0.14,
+                      color: const Color(0xFF2E7D32),
+                    ),
+                  ),
+                  SizedBox(height: h * 0.025),
+                  Text(
+                    "BK Logistik",
+                    style: TextStyle(
+                      fontSize: rw * 0.075,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          offset: const Offset(0, 2),
+                          blurRadius: 4,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    "Gieß-App 2026",
+                    style: TextStyle(
+                      fontSize: rw * 0.038,
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontWeight: FontWeight.w300,
+                    ),
+                  ),
+                  SizedBox(height: h * 0.04),
 
-                // Card mit Tabs
-                Card(
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  child: Column(
-                    children: [
-                      TabBar(
-                        controller: _tabController,
-                        labelColor: const Color(0xFF2E7D32),
-                        unselectedLabelColor: Colors.grey,
-                        indicatorColor: const Color(0xFF2E7D32),
-                        labelStyle: TextStyle(fontSize: w * 0.038),
-                        tabs: const [
-                          Tab(text: "Anmelden"),
-                          Tab(text: "Registrieren"),
-                        ],
-                      ),
-                      const Divider(height: 1),
-
-                      SizedBox(
-                        height: h * 0.45,
-                        child: TabBarView(
-                          controller: _tabController,
-                          children: [
-                            // LOGIN TAB
-                            Padding(
-                              padding: EdgeInsets.all(w * 0.06),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  TextField(
-                                    controller: _loginEmailController,
-                                    keyboardType: TextInputType.emailAddress,
-                                    style: TextStyle(fontSize: w * 0.038),
-                                    decoration: InputDecoration(
-                                      labelText: "E-Mail",
-                                      labelStyle: TextStyle(fontSize: w * 0.035),
-                                      prefixIcon: Icon(Icons.email_outlined, size: w * 0.05),
-                                      border: const OutlineInputBorder(),
-                                    ),
-                                  ),
-                                  SizedBox(height: h * 0.02),
-                                  TextField(
-                                    controller: _loginPasswortController,
-                                    obscureText: !_loginPasswortSichtbar,
-                                    style: TextStyle(fontSize: w * 0.038),
-                                    onSubmitted: (_) => _login(),
-                                    decoration: InputDecoration(
-                                      labelText: "Passwort",
-                                      labelStyle: TextStyle(fontSize: w * 0.035),
-                                      prefixIcon: Icon(Icons.lock_outlined, size: w * 0.05),
-                                      border: const OutlineInputBorder(),
-                                      suffixIcon: IconButton(
-                                        icon: Icon(_loginPasswortSichtbar ? Icons.visibility_off : Icons.visibility, size: w * 0.05),
-                                        onPressed: () => setState(() => _loginPasswortSichtbar = !_loginPasswortSichtbar),
-                                      ),
-                                    ),
-                                  ),
-                                  Align(
-                                    alignment: Alignment.centerRight,
-                                    child: TextButton(
-                                      onPressed: _isLoading ? null : _passwortVergessen,
-                                      child: Text("Passwort vergessen?", style: TextStyle(fontSize: w * 0.033)),
-                                    ),
-                                  ),
-                                  SizedBox(height: h * 0.01),
-                                  ElevatedButton(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF2E7D32),
-                                      foregroundColor: Colors.white,
-                                      padding: EdgeInsets.symmetric(vertical: h * 0.018),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                    ),
-                                    onPressed: _isLoading ? null : _login,
-                                    child: _isLoading
-                                        ? SizedBox(height: w * 0.05, width: w * 0.05, child: const CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                        : Text("Anmelden", style: TextStyle(fontSize: w * 0.04)),
-                                  ),
-                                ],
-                              ),
+                  // Card
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.12),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // TabBar
+                        ClipRRect(
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(20),
+                            topRight: Radius.circular(20),
+                          ),
+                          child: TabBar(
+                            controller: _tabController,
+                            labelColor: const Color(0xFF2E7D32),
+                            unselectedLabelColor: Colors.grey.shade600,
+                            indicatorColor: const Color(0xFF2E7D32),
+                            indicatorWeight: 3,
+                            labelStyle: TextStyle(
+                              fontSize: rw * 0.042,
+                              fontWeight: FontWeight.w600,
                             ),
+                            unselectedLabelStyle: TextStyle(
+                              fontSize: rw * 0.038,
+                            ),
+                            tabs: const [
+                              Tab(text: "Anmelden"),
+                              Tab(text: "Registrieren"),
+                            ],
+                          ),
+                        ),
+                        Divider(height: 1, color: Colors.grey.shade200),
 
-                            // REGISTRIEREN TAB
-                            Padding(
-                              padding: EdgeInsets.all(w * 0.06),
-                              child: SingleChildScrollView(
+                        // TabBarView – KEINE fixe Höhe, nutzt intrinsische Höhe der Tabs
+                        SizedBox(
+                          height: kIsWeb
+                              ? (h * 0.55).clamp(350.0, 550.0) // Web: angepasst
+                              : (h * 0.52).clamp(
+                                  300.0,
+                                  500.0,
+                                ), // Mobil: angepasst
+                          child: TabBarView(
+                            controller: _tabController,
+                            children: [
+                              // LOGIN TAB
+                              SingleChildScrollView(
+                                padding: EdgeInsets.all(rw * 0.06),
                                 child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
                                   children: [
-                                    TextField(
-                                      controller: _regNameController,
-                                      style: TextStyle(fontSize: w * 0.038),
-                                      decoration: InputDecoration(
-                                        labelText: "Dein Name",
-                                        labelStyle: TextStyle(fontSize: w * 0.035),
-                                        prefixIcon: Icon(Icons.person_outlined, size: w * 0.05),
-                                        border: const OutlineInputBorder(),
-                                      ),
-                                    ),
-                                    SizedBox(height: h * 0.015),
-                                    TextField(
-                                      controller: _regEmailController,
+                                    _inputField(
+                                      controller: _loginEmailController,
+                                      label: "E-Mail",
+                                      icon: Icons.email_outlined,
                                       keyboardType: TextInputType.emailAddress,
-                                      style: TextStyle(fontSize: w * 0.038),
-                                      decoration: InputDecoration(
-                                        labelText: "E-Mail",
-                                        labelStyle: TextStyle(fontSize: w * 0.035),
-                                        prefixIcon: Icon(Icons.email_outlined, size: w * 0.05),
-                                        border: const OutlineInputBorder(),
-                                      ),
+                                      w: rw,
+                                      h: h,
                                     ),
-                                    SizedBox(height: h * 0.015),
-                                    TextField(
-                                      controller: _regPasswortController,
-                                      obscureText: !_regPasswortSichtbar,
-                                      style: TextStyle(fontSize: w * 0.038),
-                                      decoration: InputDecoration(
-                                        labelText: "Passwort",
-                                        labelStyle: TextStyle(fontSize: w * 0.035),
-                                        prefixIcon: Icon(Icons.lock_outlined, size: w * 0.05),
-                                        border: const OutlineInputBorder(),
-                                        suffixIcon: IconButton(
-                                          icon: Icon(_regPasswortSichtbar ? Icons.visibility_off : Icons.visibility, size: w * 0.05),
-                                          onPressed: () => setState(() => _regPasswortSichtbar = !_regPasswortSichtbar),
+                                    SizedBox(height: h * 0.02),
+                                    _inputField(
+                                      controller: _loginPasswortController,
+                                      label: "Passwort",
+                                      icon: Icons.lock_outlined,
+                                      obscureToggle: _loginPasswortSichtbar,
+                                      onToggle: () => setState(
+                                        () => _loginPasswortSichtbar =
+                                            !_loginPasswortSichtbar,
+                                      ),
+                                      onSubmit: _login,
+                                      w: rw,
+                                      h: h,
+                                    ),
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: TextButton(
+                                        onPressed: _isLoading
+                                            ? null
+                                            : _passwortVergessen,
+                                        style: TextButton.styleFrom(
+                                          foregroundColor: const Color(
+                                            0xFF2E7D32,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          "Passwort vergessen?",
+                                          style: TextStyle(
+                                            fontSize: rw * 0.033,
+                                          ),
                                         ),
                                       ),
                                     ),
                                     SizedBox(height: h * 0.015),
-                                    TextField(
-                                      controller: _regPasswortWiederholungController,
-                                      obscureText: true,
-                                      style: TextStyle(fontSize: w * 0.038),
-                                      onSubmitted: (_) => _registrieren(),
-                                      decoration: InputDecoration(
-                                        labelText: "Passwort wiederholen",
-                                        labelStyle: TextStyle(fontSize: w * 0.035),
-                                        prefixIcon: Icon(Icons.lock_outlined, size: w * 0.05),
-                                        border: const OutlineInputBorder(),
-                                      ),
-                                    ),
-                                    SizedBox(height: h * 0.02),
-                                    ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF2E7D32),
-                                        foregroundColor: Colors.white,
-                                        padding: EdgeInsets.symmetric(vertical: h * 0.018),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                      ),
-                                      onPressed: _isLoading ? null : _registrieren,
-                                      child: _isLoading
-                                          ? SizedBox(height: w * 0.05, width: w * 0.05, child: const CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                          : Text("Registrieren", style: TextStyle(fontSize: w * 0.04)),
+                                    _anmeldenButton(
+                                      w: rw,
+                                      h: h,
+                                      label: "Anmelden",
+                                      onPressed: _isLoading ? null : _login,
                                     ),
                                   ],
                                 ),
                               ),
-                            ),
-                          ],
+
+                              // REGISTRIEREN TAB
+                              SingleChildScrollView(
+                                padding: EdgeInsets.all(rw * 0.06),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    _inputField(
+                                      controller: _regNameController,
+                                      label: "Dein Name",
+                                      icon: Icons.person_outlined,
+                                      w: rw,
+                                      h: h,
+                                    ),
+                                    SizedBox(height: h * 0.015),
+                                    _inputField(
+                                      controller: _regEmailController,
+                                      label: "E-Mail",
+                                      icon: Icons.email_outlined,
+                                      keyboardType: TextInputType.emailAddress,
+                                      w: rw,
+                                      h: h,
+                                    ),
+                                    SizedBox(height: h * 0.015),
+                                    _inputField(
+                                      controller: _regPasswortController,
+                                      label: "Passwort",
+                                      icon: Icons.lock_outlined,
+                                      obscureToggle: _regPasswortSichtbar,
+                                      onToggle: () => setState(
+                                        () => _regPasswortSichtbar =
+                                            !_regPasswortSichtbar,
+                                      ),
+                                      w: rw,
+                                      h: h,
+                                    ),
+                                    SizedBox(height: h * 0.015),
+                                    _inputField(
+                                      controller:
+                                          _regPasswortWiederholungController,
+                                      label: "Passwort wiederholen",
+                                      icon: Icons.lock_outlined,
+                                      obscure: true,
+                                      onSubmit: _registrieren,
+                                      w: rw,
+                                      h: h,
+                                    ),
+                                    SizedBox(height: h * 0.025),
+                                    _anmeldenButton(
+                                      w: rw,
+                                      h: h,
+                                      label: "Registrieren",
+                                      onPressed: _isLoading
+                                          ? null
+                                          : _registrieren,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

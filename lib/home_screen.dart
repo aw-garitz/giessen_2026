@@ -15,7 +15,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // Hier definieren wir die Seiten, zwischen denen gewechselt wird
   static const List<Widget> _pages = [
     MapScreen(), // Deine Karte (muss in map_scren.dart so heißen)
-    Center(child: Text("Liste der Aufgaben (folgt)")), 
+    Center(child: Text("Liste der Aufgaben (folgt)")),
   ];
 
   void _onItemTapped(int index) {
@@ -27,10 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _pages,
-      ),
+      body: IndexedStack(index: _selectedIndex, children: _pages),
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Karte'),
@@ -41,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onTap: _onItemTapped,
       ),
       floatingActionButton: FloatingActionButton(
+        backgroundColor: Colors.green,
         onPressed: () {
           Navigator.push(
             context,
@@ -48,7 +46,6 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
         child: const Icon(Icons.add_location_alt),
-        backgroundColor: Colors.green,
       ),
     );
   }

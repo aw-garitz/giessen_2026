@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'mobile_karte_view.dart';
 import 'mobile_liste_view.dart';
-import 'scan_screen.dart';
+
 import '../funktionen/fn_allgemein.dart';
+import '../profil_service.dart';
 import '../funktionen/offline_sync_service.dart';
 
 class MobileMainView extends StatefulWidget {
@@ -38,6 +39,74 @@ class _MobileMainViewState extends State<MobileMainView> {
     _ladeGespeichertesKFZ();
     _ladeOfflineCount();
     _startAutoSync();
+    _checkPasswordChange();
+  }
+
+  Future<void> _checkPasswordChange() async {
+    // Kurz warten, damit der View geladen ist
+    await Future.delayed(const Duration(milliseconds: 500));
+    final profil = await ProfilService.ladeProfil();
+    if (profil != null && profil['muss_passwort_aendern'] == true) {
+      if (mounted) _showPasswordChangeDialog();
+    }
+  }
+
+  void _showPasswordChangeDialog() {
+    final pwController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Nutzer darf nicht abbrechen
+      builder: (ctx) => AlertDialog(
+        title: const Text("Passwort ändern"),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text("Ihr Administrator hat ein vorläufiges Passwort vergeben. Bitte setzen Sie ein neues Passwort."),
+              const SizedBox(height: 20),
+              TextFormField(
+                controller: pwController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: "Neues Passwort",
+                  border: OutlineInputBorder(),
+                ),
+                validator: (val) => (val == null || val.length < 6) 
+                    ? "Mindestens 6 Zeichen" 
+                    : null,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () async {
+              if (formKey.currentState!.validate()) {
+                final success = await ProfilService.passwortAendern(pwController.text.trim());
+                if (success) {
+                  if (mounted) {
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Passwort erfolgreich geändert ✅")),
+                    );
+                  }
+                } else {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Fehler beim Ändern des Passworts")),
+                    );
+                  }
+                }
+              }
+            },
+            child: const Text("SPEICHERN"),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -56,7 +125,9 @@ class _MobileMainViewState extends State<MobileMainView> {
         final alleKFZ = ["Alle", ...liste];
         setState(() {
           _kfzListe = alleKFZ;
-          _selectedKFZ = alleKFZ.contains(gespeichertesKFZ) ? gespeichertesKFZ : "Alle";
+          _selectedKFZ = alleKFZ.contains(gespeichertesKFZ)
+              ? gespeichertesKFZ
+              : "Alle";
           _isLoadingKFZ = false;
         });
       }
@@ -93,10 +164,14 @@ class _MobileMainViewState extends State<MobileMainView> {
       if (mounted && !automatisch) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(ergebnis.alleErfolgreich
-                ? "${ergebnis.erfolgreich} Vorgänge synchronisiert ✅"
-                : "${ergebnis.erfolgreich} OK, ${ergebnis.fehlgeschlagen} fehlgeschlagen"),
-            backgroundColor: ergebnis.alleErfolgreich ? Colors.green : Colors.orange,
+            content: Text(
+              ergebnis.alleErfolgreich
+                  ? "${ergebnis.erfolgreich} Vorgänge synchronisiert ✅"
+                  : "${ergebnis.erfolgreich} OK, ${ergebnis.fehlgeschlagen} fehlgeschlagen",
+            ),
+            backgroundColor: ergebnis.alleErfolgreich
+                ? Colors.green
+                : Colors.orange,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -104,11 +179,6 @@ class _MobileMainViewState extends State<MobileMainView> {
     } finally {
       if (mounted) setState(() => _isSyncing = false);
     }
-  }
-
-  void _jumpToScanner() {
-    _pageController.animateToPage(2,
-        duration: const Duration(milliseconds: 400), curve: Curves.easeInOut);
   }
 
   @override
@@ -130,17 +200,30 @@ class _MobileMainViewState extends State<MobileMainView> {
           // Offline-Sync Badge + Button
           if (_offlineCount > 0)
             Padding(
-              padding: EdgeInsets.symmetric(vertical: h * 0.012, horizontal: w * 0.01),
+              padding: EdgeInsets.symmetric(
+                vertical: h * 0.012,
+                horizontal: w * 0.01,
+              ),
               child: Badge(
-                label: Text("$_offlineCount", style: TextStyle(fontSize: w * 0.025)),
+                label: Text(
+                  "$_offlineCount",
+                  style: TextStyle(fontSize: w * 0.025),
+                ),
                 child: IconButton(
                   iconSize: w * 0.06,
                   icon: _isSyncing
                       ? SizedBox(
-                          width: w * 0.05, height: w * 0.05,
-                          child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
+                          width: w * 0.05,
+                          height: w * 0.05,
+                          child: const CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.orange,
+                          ),
                         )
-                      : const Icon(Icons.cloud_upload_outlined, color: Colors.orange),
+                      : const Icon(
+                          Icons.cloud_upload_outlined,
+                          color: Colors.orange,
+                        ),
                   tooltip: "Offline-Vorgänge synchronisieren",
                   onPressed: _isSyncing ? null : () => _syncDurchfuehren(),
                 ),
@@ -149,27 +232,45 @@ class _MobileMainViewState extends State<MobileMainView> {
           if (!_isLoadingKFZ)
             _buildAppBarBadge(
               icon: Icons.local_shipping,
-              w: w, h: h,
+              w: w,
+              h: h,
               child: DropdownButton<String>(
                 value: _selectedKFZ,
                 underline: const SizedBox(),
                 dropdownColor: Colors.white,
-                style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: w * 0.032),
-                items: _kfzListe.map((kfz) => DropdownMenuItem(value: kfz, child: Text(kfz))).toList(),
-                onChanged: (val) { if (val != null) _setzeKFZ(val); },
+                style: TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                  fontSize: w * 0.032,
+                ),
+                items: _kfzListe
+                    .map(
+                      (kfz) => DropdownMenuItem(value: kfz, child: Text(kfz)),
+                    )
+                    .toList(),
+                onChanged: (val) {
+                  if (val != null) _setzeKFZ(val);
+                },
               ),
             ),
           SizedBox(width: w * 0.015),
           _buildAppBarBadge(
             icon: Icons.calendar_month,
-            w: w, h: h,
+            w: w,
+            h: h,
             child: DropdownButton<int>(
               value: _selectedKW,
               underline: const SizedBox(),
               dropdownColor: Colors.white,
-              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: w * 0.032),
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+                fontSize: w * 0.032,
+              ),
               items: List.generate(52, (i) => i + 1)
-                  .map((kw) => DropdownMenuItem(value: kw, child: Text("KW $kw")))
+                  .map(
+                    (kw) => DropdownMenuItem(value: kw, child: Text("KW $kw")),
+                  )
                   .toList(),
               onChanged: (val) => setState(() => _selectedKW = val!),
             ),
@@ -185,13 +286,11 @@ class _MobileMainViewState extends State<MobileMainView> {
             MobileKarteView(
               selectedKW: _selectedKW,
               selectedKFZ: _selectedKFZ,
-              onJumpToScanner: _jumpToScanner,
               onOfflineVorgangGespeichert: _ladeOfflineCount,
             ),
             MobileTourListeView(
               selectedKW: _selectedKW,
               selectedKFZ: _selectedKFZ,
-              onJumpToScanner: _jumpToScanner,
               onCountChanged: (count) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (mounted) setState(() => _tourCount = count);
@@ -199,11 +298,7 @@ class _MobileMainViewState extends State<MobileMainView> {
               },
               onOfflineVorgangGespeichert: _ladeOfflineCount,
             ),
-            ScanScreen(
-              ausgewaehlteKW: _selectedKW,
-              ausgewaehltesKFZ: _selectedKFZ,
-              onOfflineVorgangGespeichert: _ladeOfflineCount,
-            ),
+            
           ],
         ),
       ),
@@ -228,13 +323,17 @@ class _MobileMainViewState extends State<MobileMainView> {
             ),
             label: "Tour",
           ),
-          const BottomNavigationBarItem(icon: Icon(Icons.qr_code_scanner), label: "Scan"),
         ],
       ),
     );
   }
 
-  Widget _buildAppBarBadge({required IconData icon, required Widget child, required double w, required double h}) {
+  Widget _buildAppBarBadge({
+    required IconData icon,
+    required Widget child,
+    required double w,
+    required double h,
+  }) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: w * 0.02),
       margin: EdgeInsets.symmetric(vertical: h * 0.012),
@@ -243,11 +342,14 @@ class _MobileMainViewState extends State<MobileMainView> {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.black12),
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: w * 0.038, color: Colors.blueGrey),
-        SizedBox(width: w * 0.01),
-        DropdownButtonHideUnderline(child: child),
-      ]),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: w * 0.038, color: Colors.blueGrey),
+          SizedBox(width: w * 0.01),
+          DropdownButtonHideUnderline(child: child),
+        ],
+      ),
     );
   }
 }

@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:giessen_app/funktionen/fn_allgemein.dart';
 
@@ -14,6 +13,9 @@ class OfflineVorgang {
   final DateTime zeitpunkt;
   final String typ; // 'erledigt' oder 'reset'
   final Map<String, dynamic> ausfuehrungData;
+  final double? lat;
+  final double? lng;
+  final double? accuracy;
 
   OfflineVorgang({
     required this.id,
@@ -22,6 +24,9 @@ class OfflineVorgang {
     required this.typ,
     required this.ausfuehrungData,
     this.kfz,
+    this.lat,
+    this.lng,
+    this.accuracy,
   });
 
   Map<String, dynamic> toJson() => {
@@ -31,6 +36,9 @@ class OfflineVorgang {
     'zeitpunkt': zeitpunkt.toIso8601String(),
     'typ': typ,
     'ausfuehrung_data': ausfuehrungData,
+    'lat': lat,
+    'lng': lng,
+    'accuracy': accuracy,
   };
 
   factory OfflineVorgang.fromJson(Map<String, dynamic> json) => OfflineVorgang(
@@ -40,6 +48,9 @@ class OfflineVorgang {
     zeitpunkt: DateTime.parse(json['zeitpunkt']),
     typ: json['typ'],
     ausfuehrungData: Map<String, dynamic>.from(json['ausfuehrung_data']),
+    lat: json['lat'],
+    lng: json['lng'],
+    accuracy: json['accuracy'],
   );
 }
 
@@ -65,8 +76,7 @@ class OfflineSyncService {
   }
 
   /// Stream für automatischen Sync bei WLAN-Verbindung
-  static Stream<bool> get wlanStream => Connectivity()
-      .onConnectivityChanged
+  static Stream<bool> get wlanStream => Connectivity().onConnectivityChanged
       .map((result) => result == ConnectivityResult.wifi);
 
   /// Vorgang zur lokalen Warteschlange hinzufügen
@@ -74,6 +84,9 @@ class OfflineSyncService {
     required dynamic ausfuehrung,
     required String typ,
     String? kfz,
+    double? lat,
+    double? lng,
+    double? accuracy,
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -86,6 +99,9 @@ class OfflineSyncService {
         zeitpunkt: DateTime.now(),
         typ: typ,
         ausfuehrungData: Map<String, dynamic>.from(ausfuehrung),
+        lat: lat,
+        lng: lng,
+        accuracy: accuracy,
       );
 
       // Duplikat vermeiden
@@ -122,6 +138,9 @@ class OfflineSyncService {
           await GiesAppLogik.erledigenUndPlanen(
             vorgang.ausfuehrungData,
             kfz: vorgang.kfz,
+            lat: vorgang.lat,
+            lng: vorgang.lng,
+            accuracy: vorgang.accuracy,
           );
         } else if (vorgang.typ == 'reset') {
           await GiesAppLogik.resetToLastStatus(vorgang.ausfuehrungData);
@@ -136,7 +155,10 @@ class OfflineSyncService {
     }
 
     await _speichereQueue(prefs, nochAusstehend);
-    return SyncErgebnis(erfolgreich: erfolgreich, fehlgeschlagen: fehlgeschlagen);
+    return SyncErgebnis(
+      erfolgreich: erfolgreich,
+      fehlgeschlagen: fehlgeschlagen,
+    );
   }
 
   /// Warteschlange leeren
@@ -152,13 +174,18 @@ class OfflineSyncService {
     if (raw == null) return [];
     try {
       final List<dynamic> decoded = jsonDecode(raw);
-      return decoded.map((e) => OfflineVorgang.fromJson(Map<String, dynamic>.from(e))).toList();
+      return decoded
+          .map((e) => OfflineVorgang.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
     } catch (e) {
       return [];
     }
   }
 
-  static Future<void> _speichereQueue(SharedPreferences prefs, List<OfflineVorgang> queue) async {
+  static Future<void> _speichereQueue(
+    SharedPreferences prefs,
+    List<OfflineVorgang> queue,
+  ) async {
     final encoded = jsonEncode(queue.map((v) => v.toJson()).toList());
     await prefs.setString(_queueKey, encoded);
   }

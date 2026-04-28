@@ -39,13 +39,18 @@ class _FahrzeugeViewState extends State<FahrzeugeView> {
 
   void _zeigeFahrzeugDialog({Map<String, dynamic>? fahrzeug}) {
     final bool isEdit = fahrzeug != null;
-    final bezeichnungController = TextEditingController(text: fahrzeug?['bezeichnung'] ?? "");
-    final kennzeichenController = TextEditingController(text: fahrzeug?['kennzeichen'] ?? "");
+    final bezeichnungController = TextEditingController(
+      text: fahrzeug?['bezeichnung'] ?? "",
+    );
+    final kennzeichenController = TextEditingController(
+      text: fahrzeug?['kennzeichen'] ?? "",
+    );
     bool istAktiv = fahrzeug?['aktiv'] ?? true;
 
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder( // Nötig, um die Checkbox im Dialog zu aktualisieren
+      builder: (ctx) => StatefulBuilder(
+        // Nötig, um die Checkbox im Dialog zu aktualisieren
         builder: (context, setDialogState) => AlertDialog(
           title: Text(isEdit ? "Fahrzeug bearbeiten" : "Neues Fahrzeug"),
           content: Column(
@@ -53,7 +58,9 @@ class _FahrzeugeViewState extends State<FahrzeugeView> {
             children: [
               TextField(
                 controller: bezeichnungController,
-                decoration: const InputDecoration(labelText: "Bezeichnung (z.B. LKW klein)"),
+                decoration: const InputDecoration(
+                  labelText: "Bezeichnung (z.B. LKW klein)",
+                ),
               ),
               TextField(
                 controller: kennzeichenController,
@@ -68,7 +75,10 @@ class _FahrzeugeViewState extends State<FahrzeugeView> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Abbrechen")),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Abbrechen"),
+            ),
             ElevatedButton(
               onPressed: () async {
                 final data = {
@@ -77,12 +87,17 @@ class _FahrzeugeViewState extends State<FahrzeugeView> {
                   'aktiv': istAktiv,
                 };
                 if (isEdit) {
-                  await supabase.from('fahrzeuge').update(data).eq('id', fahrzeug['id']);
+                  await supabase
+                      .from('fahrzeuge')
+                      .update(data)
+                      .eq('id', fahrzeug['id']);
                 } else {
                   await supabase.from('fahrzeuge').insert(data);
                 }
-                Navigator.pop(ctx);
-                _loadFahrzeuge();
+                if (mounted) {
+                  Navigator.pop(ctx);
+                  _loadFahrzeuge();
+                }
               },
               child: const Text("Speichern"),
             ),
@@ -101,7 +116,10 @@ class _FahrzeugeViewState extends State<FahrzeugeView> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Fuhrpark", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+              const Text(
+                "Fuhrpark",
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
               ElevatedButton.icon(
                 onPressed: () => _zeigeFahrzeugDialog(),
                 icon: const Icon(Icons.add),
@@ -118,22 +136,37 @@ class _FahrzeugeViewState extends State<FahrzeugeView> {
                   itemBuilder: (ctx, i) {
                     final f = _fahrzeuge[i];
                     return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 4,
+                      ),
                       child: ListTile(
-                        leading: Icon(Icons.local_shipping, color: f['aktiv'] ? Colors.green : Colors.grey),
+                        leading: Icon(
+                          Icons.local_shipping,
+                          color: f['aktiv'] ? Colors.green : Colors.grey,
+                        ),
                         title: Text(f['bezeichnung'] ?? "Ohne Namen"),
-                        subtitle: Text("Kennzeichen: ${f['kennzeichen'] ?? '-'}"),
+                        subtitle: Text(
+                          "Kennzeichen: ${f['kennzeichen'] ?? '-'}",
+                        ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
                               icon: const Icon(Icons.edit, color: Colors.blue),
-                              onPressed: () => _zeigeFahrzeugDialog(fahrzeug: f),
+                              onPressed: () =>
+                                  _zeigeFahrzeugDialog(fahrzeug: f),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.red),
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.red,
+                              ),
                               onPressed: () async {
-                                await supabase.from('fahrzeuge').delete().eq('id', f['id']);
+                                await supabase
+                                    .from('fahrzeuge')
+                                    .delete()
+                                    .eq('id', f['id']);
                                 _loadFahrzeuge();
                               },
                             ),

@@ -38,12 +38,22 @@ class _TaetigkeitenViewState extends State<TaetigkeitenView> {
 
   void _zeigeDialog({Map<String, dynamic>? item}) {
     final bool isEdit = item != null;
-    final kurzController = TextEditingController(text: item?['beschreibung_kurz'] ?? "");
-    final langController = TextEditingController(text: item?['beschreibung_lang'] ?? "");
-    final intervallController = TextEditingController(text: item?['intervall_tage']?.toString() ?? "");
-    final literController = TextEditingController(text: item?['liter_soll']?.toString() ?? "");
+    final kurzController = TextEditingController(
+      text: item?['beschreibung_kurz'] ?? "",
+    );
+    final langController = TextEditingController(
+      text: item?['beschreibung_lang'] ?? "",
+    );
+    final intervallController = TextEditingController(
+      text: item?['intervall_tage']?.toString() ?? "",
+    );
+    final literController = TextEditingController(
+      text: item?['liter_soll']?.toString() ?? "",
+    );
     // NEU: Controller für Dauer
-    final dauerController = TextEditingController(text: item?['dauer_tage']?.toString() ?? "");
+    final dauerController = TextEditingController(
+      text: item?['dauer_tage']?.toString() ?? "",
+    );
 
     showDialog(
       context: context,
@@ -54,31 +64,38 @@ class _TaetigkeitenViewState extends State<TaetigkeitenView> {
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
-                controller: kurzController, 
-                decoration: const InputDecoration(labelText: "Kurzbezeichnung (z.B. Jungbaumpflege)")
+                controller: kurzController,
+                decoration: const InputDecoration(
+                  labelText: "Kurzbezeichnung (z.B. Jungbaumpflege)",
+                ),
               ),
               TextField(
-                controller: langController, 
-                decoration: const InputDecoration(labelText: "Lange Beschreibung")
+                controller: langController,
+                decoration: const InputDecoration(
+                  labelText: "Lange Beschreibung",
+                ),
               ),
               const SizedBox(height: 10),
               Row(
                 children: [
                   Expanded(
                     child: TextField(
-                      controller: intervallController, 
-                      decoration: const InputDecoration(labelText: "Intervall (Tage)", hintText: "z.B. 21"),
+                      controller: intervallController,
+                      decoration: const InputDecoration(
+                        labelText: "Intervall (Tage)",
+                        hintText: "z.B. 21",
+                      ),
                       keyboardType: TextInputType.number,
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: TextField(
-                      controller: dauerController, 
+                      controller: dauerController,
                       decoration: const InputDecoration(
-                        labelText: "Gesamtdauer (Tage)", 
+                        labelText: "Gesamtdauer (Tage)",
                         hintText: "Leer = ∞",
-                        helperText: "3 J. = 1095 T."
+                        helperText: "3 J. = 1095 T.",
                       ),
                       keyboardType: TextInputType.number,
                     ),
@@ -87,15 +104,21 @@ class _TaetigkeitenViewState extends State<TaetigkeitenView> {
               ),
               const SizedBox(height: 10),
               TextField(
-                controller: literController, 
-                decoration: const InputDecoration(labelText: "Liter Soll", suffixText: "L"),
+                controller: literController,
+                decoration: const InputDecoration(
+                  labelText: "Liter Soll",
+                  suffixText: "L",
+                ),
                 keyboardType: TextInputType.number,
               ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Abbrechen")),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Abbrechen"),
+          ),
           ElevatedButton(
             onPressed: () async {
               final map = {
@@ -104,25 +127,30 @@ class _TaetigkeitenViewState extends State<TaetigkeitenView> {
                 'intervall_tage': int.tryParse(intervallController.text) ?? 0,
                 'liter_soll': double.tryParse(literController.text) ?? 0.0,
                 // NEU: Speichern der Dauer
-                'dauer_tage': int.tryParse(dauerController.text), 
+                'dauer_tage': int.tryParse(dauerController.text),
               };
 
               try {
                 if (isEdit) {
-                  await supabase.from('taetigkeiten').update(map).eq('id', item['id']);
+                  await supabase
+                      .from('taetigkeiten')
+                      .update(map)
+                      .eq('id', item['id']);
                 } else {
                   await supabase.from('taetigkeiten').insert(map);
                 }
                 if (mounted) Navigator.pop(ctx);
-                _loadData();
+                if (mounted) _loadData();
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("Fehler beim Speichern: $e"))
-                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Fehler beim Speichern: $e")),
+                  );
+                }
               }
             },
             child: const Text("Speichern"),
-          )
+          ),
         ],
       ),
     );
@@ -137,7 +165,10 @@ class _TaetigkeitenViewState extends State<TaetigkeitenView> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Tätigkeiten", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+              const Text(
+                "Tätigkeiten",
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
               ElevatedButton.icon(
                 onPressed: () => _zeigeDialog(),
                 icon: const Icon(Icons.add_task),
@@ -147,64 +178,95 @@ class _TaetigkeitenViewState extends State<TaetigkeitenView> {
           ),
         ),
         Expanded(
-          child: _isLoading 
-            ? const Center(child: CircularProgressIndicator())
-            : ListView.builder(
-                itemCount: _data.length,
-                itemBuilder: (ctx, i) {
-                  final t = _data[i];
-                  final int? dauer = t['dauer_tage'];
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : ListView.builder(
+                  itemCount: _data.length,
+                  itemBuilder: (ctx, i) {
+                    final t = _data[i];
+                    final int? dauer = t['dauer_tage'];
 
-                  return Card(
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    child: ListTile(
-                      leading: const CircleAvatar(child: Icon(Icons.water_drop_outlined)),
-                      title: Text(t['beschreibung_kurz'] ?? "Unbekannt", style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("${t['intervall_tage']} Tage Intervall | ${t['liter_soll']} L Soll"),
-                          Text(
-                            dauer == null || dauer == 0 
-                              ? "Laufzeit: Unendlich (Dauerpflege)" 
-                              : "Laufzeit: $dauer Tage",
-                            style: TextStyle(
-                              fontSize: 12, 
-                              color: dauer == null ? Colors.green : Colors.blueGrey
+                    return Card(
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 4,
+                      ),
+                      child: ListTile(
+                        leading: const CircleAvatar(
+                          child: Icon(Icons.water_drop_outlined),
+                        ),
+                        title: Text(
+                          t['beschreibung_kurz'] ?? "Unbekannt",
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "${t['intervall_tage']} Tage Intervall | ${t['liter_soll']} L Soll",
                             ),
-                          ),
-                        ],
+                            Text(
+                              dauer == null || dauer == 0
+                                  ? "Laufzeit: Unendlich (Dauerpflege)"
+                                  : "Laufzeit: $dauer Tage",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: dauer == null
+                                    ? Colors.green
+                                    : Colors.blueGrey,
+                              ),
+                            ),
+                          ],
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit, color: Colors.blue),
+                              onPressed: () => _zeigeDialog(item: t),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.red,
+                              ),
+                              onPressed: () async {
+                                final bool? confirm = await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text("Löschen?"),
+                                    content: const Text(
+                                      "Möchten Sie diese Tätigkeit wirklich entfernen?",
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(ctx, false),
+                                        child: const Text("Abbrechen"),
+                                      ),
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(ctx, true),
+                                        child: const Text("Löschen"),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (confirm == true) {
+                                  await supabase
+                                      .from('taetigkeiten')
+                                      .delete()
+                                      .eq('id', t['id']);
+                                  _loadData();
+                                }
+                              },
+                            ),
+                          ],
+                        ),
                       ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _zeigeDialog(item: t)),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.red), 
-                            onPressed: () async {
-                              final bool? confirm = await showDialog<bool>(
-                                context: context,
-                                builder: (ctx) => AlertDialog(
-                                  title: const Text("Löschen?"),
-                                  content: const Text("Möchten Sie diese Tätigkeit wirklich entfernen?"),
-                                  actions: [
-                                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Abbrechen")),
-                                    TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Löschen")),
-                                  ],
-                                )
-                              );
-                              if (confirm == true) {
-                                await supabase.from('taetigkeiten').delete().eq('id', t['id']);
-                                _loadData();
-                              }
-                            }
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
+                    );
+                  },
+                ),
         ),
       ],
     );

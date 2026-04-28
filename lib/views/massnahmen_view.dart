@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:giessen_app/qr_pdf_service.dart';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
-import 'package:uuid/uuid.dart';
 import 'package:giessen_app/funktionen/fn_allgemein.dart';
 
 class MassnahmenView extends StatefulWidget {
@@ -54,7 +53,9 @@ class _MassnahmenViewState extends State<MassnahmenView> {
           orte(id, beschreibung_genau, hausnummer, strassen(name)),
           taetigkeiten(*)
         '''),
-        supabase.from('orte').select('id, beschreibung_genau, hausnummer, strassen(name)'),
+        supabase
+            .from('orte')
+            .select('id, beschreibung_genau, hausnummer, strassen(name)'),
         supabase.from('taetigkeiten').select('*'),
         supabase.from('fahrzeuge').select('kennzeichen, bezeichnung'),
       ]);
@@ -92,9 +93,15 @@ class _MassnahmenViewState extends State<MassnahmenView> {
         _filteredMassnahmen = _allMassnahmen;
       } else {
         _filteredMassnahmen = _allMassnahmen.where((m) {
-          final strasse = (m['orte']?['strassen']?['name'] ?? '').toString().toLowerCase();
-          final beschr = (m['orte']?['beschreibung_genau'] ?? '').toString().toLowerCase();
-          final tat = (m['taetigkeiten']?['beschreibung_kurz'] ?? '').toString().toLowerCase();
+          final strasse = (m['orte']?['strassen']?['name'] ?? '')
+              .toString()
+              .toLowerCase();
+          final beschr = (m['orte']?['beschreibung_genau'] ?? '')
+              .toString()
+              .toLowerCase();
+          final tat = (m['taetigkeiten']?['beschreibung_kurz'] ?? '')
+              .toString()
+              .toLowerCase();
           return strasse.contains(query.toLowerCase()) ||
               beschr.contains(query.toLowerCase()) ||
               tat.contains(query.toLowerCase());
@@ -103,43 +110,15 @@ class _MassnahmenViewState extends State<MassnahmenView> {
     });
   }
 
-  void _zeigeDruckDialog({required List<dynamic> daten, required String titel}) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(titel),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.picture_as_pdf, size: 50, color: Colors.blueGrey),
-            const SizedBox(height: 15),
-            Text("${daten.length} QR-Code(s) für den Druck vorbereiten?"),
-          ],
-        ),
-        actions: [
-          ElevatedButton.icon(
-            onPressed: () {
-              Navigator.pop(ctx);
-              QrPdfService.generateQrLabels(daten);
-            },
-            icon: const Icon(Icons.print),
-            label: const Text("Drucken"),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey, foregroundColor: Colors.white),
-          ),
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Schließen")),
-        ],
-      ),
-    );
-  }
-
   void _zeigeMassnahmenDialog({Map<String, dynamic>? item}) {
     final bool isEdit = item != null;
     dynamic selectedOrtId = item?['ort_id'];
     dynamic selectedTaetigkeitId = item?['taetigkeit_id'];
     String? selectedKennzeichen = item?['kennzeichen'];
 
-    String qrCodeId = item?['qr_code_id'] ?? const Uuid().v4();
-    DateTime selectedDate = item != null ? DateTime.parse(item['start_datum']) : DateTime.now();
+    DateTime selectedDate = item != null
+        ? DateTime.parse(item['start_datum'])
+        : DateTime.now();
 
     final startController = TextEditingController(
       text: DateFormat('dd.MM.yyyy').format(selectedDate),
@@ -159,35 +138,49 @@ class _MassnahmenViewState extends State<MassnahmenView> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<dynamic>(
-                  value: selectedOrtId,
+                  initialValue: selectedOrtId,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: "Ort / Baum"),
                   items: _orte.map((o) {
                     final hnr = o['hausnummer'];
-                    final displayHnr = (hnr == null || hnr == 'null') ? "" : " $hnr";
+                    final displayHnr = (hnr == null || hnr == 'null')
+                        ? ""
+                        : " $hnr";
                     return DropdownMenuItem<dynamic>(
                       value: o['id'],
-                      child: Text("${o['strassen']?['name'] ?? ''}$displayHnr - ${o['beschreibung_genau'] ?? ''}"),
+                      child: Text(
+                        "${o['strassen']?['name'] ?? ''}$displayHnr - ${o['beschreibung_genau'] ?? ''}",
+                      ),
                     );
                   }).toList(),
                   onChanged: (val) => setDS(() => selectedOrtId = val),
                 ),
                 DropdownButtonFormField<dynamic>(
-                  value: selectedTaetigkeitId,
+                  initialValue: selectedTaetigkeitId,
                   decoration: const InputDecoration(labelText: "Tätigkeit"),
-                  items: _taetigkeiten.map((t) => DropdownMenuItem<dynamic>(
-                    value: t['id'],
-                    child: Text("${t['beschreibung_kurz']}"),
-                  )).toList(),
+                  items: _taetigkeiten
+                      .map(
+                        (t) => DropdownMenuItem<dynamic>(
+                          value: t['id'],
+                          child: Text("${t['beschreibung_kurz']}"),
+                        ),
+                      )
+                      .toList(),
                   onChanged: (val) => setDS(() => selectedTaetigkeitId = val),
                 ),
                 DropdownButtonFormField<String>(
-                  value: selectedKennzeichen,
-                  decoration: const InputDecoration(labelText: "Standard-Fahrzeug"),
-                  items: _fahrzeuge.map((f) => DropdownMenuItem<String>(
-                    value: f['kennzeichen'],
-                    child: Text("${f['kennzeichen']}"),
-                  )).toList(),
+                  initialValue: selectedKennzeichen,
+                  decoration: const InputDecoration(
+                    labelText: "Standard-Fahrzeug",
+                  ),
+                  items: _fahrzeuge
+                      .map(
+                        (f) => DropdownMenuItem<String>(
+                          value: f['kennzeichen'],
+                          child: Text("${f['kennzeichen']}"),
+                        ),
+                      )
+                      .toList(),
                   onChanged: (val) => setDS(() => selectedKennzeichen = val),
                 ),
                 const SizedBox(height: 15),
@@ -208,7 +201,9 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                     if (p != null) {
                       setDS(() {
                         selectedDate = p;
-                        startController.text = DateFormat('dd.MM.yyyy').format(p);
+                        startController.text = DateFormat(
+                          'dd.MM.yyyy',
+                        ).format(p);
                       });
                     }
                   },
@@ -225,37 +220,53 @@ class _MassnahmenViewState extends State<MassnahmenView> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Abbruch")),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Abbruch"),
+            ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: isEdit ? Colors.orange : Colors.green,
                 foregroundColor: Colors.white,
               ),
               onPressed: () async {
-                if (selectedOrtId == null || selectedTaetigkeitId == null) return;
+                if (selectedOrtId == null || selectedTaetigkeitId == null) {
+                  return;
+                }
 
                 try {
                   final massnahmeData = {
                     'ort_id': selectedOrtId,
                     'taetigkeit_id': selectedTaetigkeitId,
                     'kennzeichen': selectedKennzeichen,
-                    'qr_code_id': qrCodeId,
-                    'start_datum': DateFormat('yyyy-MM-dd').format(selectedDate),
-                    'auftragsnummer': auftragnummerController.text.trim().isEmpty
+                    'start_datum': DateFormat(
+                      'yyyy-MM-dd',
+                    ).format(selectedDate),
+                    'auftragsnummer':
+                        auftragnummerController.text.trim().isEmpty
                         ? null
                         : auftragnummerController.text.trim(),
                   };
 
                   // Intervall aus gewählter Tätigkeit holen
-                  final tatInfo = _taetigkeiten.firstWhere((t) => t['id'] == selectedTaetigkeitId);
+                  final tatInfo = _taetigkeiten.firstWhere(
+                    (t) => t['id'] == selectedTaetigkeitId,
+                  );
                   final int intervall = tatInfo['intervall_tage'] ?? 7;
 
                   String mId;
                   if (isEdit) {
                     mId = item['id'].toString();
-                    await supabase.from('massnahmen').update(massnahmeData).eq('id', mId);
+                    await supabase
+                        .from('massnahmen')
+                        .update(massnahmeData)
+                        .eq('id', mId);
                   } else {
-                    final res = await supabase.from('massnahmen').insert(massnahmeData).select().single();
+                    final res = await supabase
+                        .from('massnahmen')
+                        .insert(massnahmeData)
+                        .select()
+                        .single();
                     mId = res['id'].toString();
                   }
 
@@ -270,13 +281,21 @@ class _MassnahmenViewState extends State<MassnahmenView> {
 
                   if (mounted) {
                     Navigator.of(ctx).pop();
+                  }
+                  if (mounted) {
                     await _loadAllData();
                   }
                 } catch (e) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Fehler: $e")));
+                  if (mounted) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text("Fehler: $e")));
+                  }
                 }
               },
-              child: Text(isEdit ? "Update & Neu Planen" : "Speichern & Planen"),
+              child: Text(
+                isEdit ? "Update & Neu Planen" : "Speichern & Planen",
+              ),
             ),
           ],
         ),
@@ -289,9 +308,14 @@ class _MassnahmenViewState extends State<MassnahmenView> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("Serie löschen?"),
-        content: const Text("Dies löscht die Maßnahme und alle noch offenen Termine."),
+        content: const Text(
+          "Dies löscht die Maßnahme und alle noch offenen Termine.",
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Nein")),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("Nein"),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text("Ja", style: TextStyle(color: Colors.red)),
@@ -300,7 +324,11 @@ class _MassnahmenViewState extends State<MassnahmenView> {
       ),
     );
     if (confirm == true) {
-      await supabase.from('ausfuehrung').delete().eq('massnahme_id', id).eq('erledigt', false);
+      await supabase
+          .from('ausfuehrung')
+          .delete()
+          .eq('massnahme_id', id)
+          .eq('erledigt', false);
       await supabase.from('massnahmen').delete().eq('id', id);
       _loadAllData();
     }
@@ -319,23 +347,23 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text("Maßnahmen", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                    const Text(
+                      "Maßnahmen",
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     Row(
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.print, color: Colors.blueGrey),
-                          onPressed: () => _zeigeDruckDialog(
-                            daten: _filteredMassnahmen,
-                            titel: "Alle QR-Codes drucken",
-                          ),
-                          tooltip: "Alle gefilterten QR-Codes drucken",
-                        ),
-                        const SizedBox(width: 8),
                         ElevatedButton.icon(
                           onPressed: () => _zeigeMassnahmenDialog(),
                           icon: const Icon(Icons.add),
                           label: const Text("Neu"),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
+                          ),
                         ),
                       ],
                     ),
@@ -348,7 +376,9 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                   decoration: InputDecoration(
                     hintText: "Suchen...",
                     prefixIcon: const Icon(Icons.search),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     filled: true,
                     fillColor: Colors.white,
                   ),
@@ -369,11 +399,19 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                       final bool istEingeplant = m['end_datum'] != null;
                       final bool hatRealesEnde = m['reales_end_datum'] != null;
 
-                      final displayHnr = (ort?['hausnummer'] == null || ort?['hausnummer'] == 'null') ? "" : " ${ort?['hausnummer']}";
-                      final displayFullOrt = "${ort?['strassen']?['name'] ?? ''}$displayHnr - ${ort?['beschreibung_genau'] ?? ''}";
+                      final displayHnr =
+                          (ort?['hausnummer'] == null ||
+                              ort?['hausnummer'] == 'null')
+                          ? ""
+                          : " ${ort?['hausnummer']}";
+                      final displayFullOrt =
+                          "${ort?['strassen']?['name'] ?? ''}$displayHnr - ${ort?['beschreibung_genau'] ?? ''}";
 
                       return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 4,
+                        ),
                         child: ListTile(
                           leading: Icon(
                             Icons.park,
@@ -386,18 +424,28 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                             children: [
                               Text(
                                 "${m['taetigkeiten']?['beschreibung_kurz']}",
-                                style: const TextStyle(fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                              if ((m['auftragsnummer'] ?? '').toString().isNotEmpty)
+                              if ((m['auftragsnummer'] ?? '')
+                                  .toString()
+                                  .isNotEmpty)
                                 Text(
                                   "Auftrag: ${m['auftragsnummer']}",
-                                  style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.blueGrey,
+                                  ),
                                 ),
                               Text(
                                 hatRealesEnde
                                     ? "Abschluss: ${DateFormat('dd.MM.yyyy').format(DateTime.parse(m['reales_end_datum']))}"
                                     : "kein Ende festgelegt",
-                                style: const TextStyle(fontSize: 11, color: Colors.black54),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.black54,
+                                ),
                               ),
                             ],
                           ),
@@ -405,18 +453,18 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               IconButton(
-                                icon: const Icon(Icons.qr_code),
-                                onPressed: () => _zeigeDruckDialog(
-                                  daten: [m],
-                                  titel: "$displayFullOrt drucken",
+                                icon: const Icon(
+                                  Icons.edit,
+                                  color: Colors.blue,
                                 ),
+                                onPressed: () =>
+                                    _zeigeMassnahmenDialog(item: m),
                               ),
                               IconButton(
-                                icon: const Icon(Icons.edit, color: Colors.blue),
-                                onPressed: () => _zeigeMassnahmenDialog(item: m),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.redAccent,
+                                ),
                                 onPressed: () => _loescheMassnahme(m['id']),
                               ),
                             ],

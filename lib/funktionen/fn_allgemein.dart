@@ -17,10 +17,16 @@ class GiesAppLogik {
       final start = _getStartOfKW(kw);
       final end = start.add(const Duration(days: 6, hours: 23, minutes: 59));
 
-      debugPrint("🔍 Suche Zeitraum: ${start.toIso8601String()} bis ${end.toIso8601String()}");
+      debugPrint(
+        "🔍 Suche Zeitraum: ${start.toIso8601String()} bis ${end.toIso8601String()}",
+      );
 
-      final res = await supabase.from('ausfuehrung').select('''
+      final res = await supabase
+          .from('ausfuehrung')
+          .select('''
         id, erledigt, geplant_am, kennzeichen, massnahme_id,
+        mitarbeiter, erledigt_am,
+        lat, lng, accuracy,
         massnahmen (
           id,
           auftragsnummer,
@@ -31,9 +37,9 @@ class GiesAppLogik {
           taetigkeiten:taetigkeit_id (beschreibung_kurz, intervall_tage)
         )
       ''')
-      .gte('geplant_am', start.toIso8601String())
-      .lte('geplant_am', end.toIso8601String())
-      .order('geplant_am');
+          .gte('geplant_am', start.toIso8601String())
+          .lte('geplant_am', end.toIso8601String())
+          .order('geplant_am');
 
       final liste = res as List<dynamic>;
       debugPrint("🚀 Erfolg: ${liste.length} Einträge gefunden.");
@@ -77,7 +83,8 @@ class GiesAppLogik {
       List<Map<String, dynamic>> neueTermine = [];
       DateTime naechsterTermin = startDatum;
 
-      while (naechsterTermin.isBefore(saisonEnde) || naechsterTermin.isAtSameMomentAs(saisonEnde)) {
+      while (naechsterTermin.isBefore(saisonEnde) ||
+          naechsterTermin.isAtSameMomentAs(saisonEnde)) {
         final datumStr = DateFormat('yyyy-MM-dd').format(naechsterTermin);
         if (!vorhandeneDaten.contains(datumStr)) {
           neueTermine.add({
@@ -94,7 +101,9 @@ class GiesAppLogik {
         await supabase.from('ausfuehrung').insert(neueTermine);
       }
 
-      debugPrint("📅 ${neueTermine.length} Termine bis 30.11.$jahr geplant (Intervall: $intervall Tage).");
+      debugPrint(
+        "📅 ${neueTermine.length} Termine bis 30.11.$jahr geplant (Intervall: $intervall Tage).",
+      );
     } catch (e) {
       debugPrint("❌ Fehler in planeSaison: $e");
       throw "Fehler beim Planen der Saison: $e";
@@ -104,29 +113,46 @@ class GiesAppLogik {
   /// Fahrzeuge laden
   static Future<List<String>> ladeAlleKFZ() async {
     try {
-      final res = await supabase.from('fahrzeuge').select('kennzeichen').order('kennzeichen');
+      final res = await supabase
+          .from('fahrzeuge')
+          .select('kennzeichen')
+          .order('kennzeichen');
       return (res as List).map((e) => e['kennzeichen'].toString()).toList();
-    } catch (e) { return []; }
+    } catch (e) {
+      return [];
+    }
   }
 
   /// Erledigen und Saison neu planen
-  static Future<void> erledigenUndPlanen(dynamic ausfuehrung, {String? kfz, String? quelle}) async {
+  static Future<void> erledigenUndPlanen(
+    dynamic ausfuehrung, {
+    String? kfz,
+    String? quelle,
+    double? lat,
+    double? lng,
+    double? accuracy,
+  }) async {
     try {
       final nun = DateTime.now();
       final massnahmeId = ausfuehrung['massnahme_id'];
       final int jahr = nun.year;
       final DateTime saisonEnde = DateTime(jahr, 11, 30, 23, 59);
 
-      String? bereinigtesKfz = (kfz == null || kfz == "Alle" || kfz.trim().isEmpty)
-                               ? null
-                               : kfz;
+      String? bereinigtesKfz =
+          (kfz == null || kfz == "Alle" || kfz.trim().isEmpty) ? null : kfz;
 
       // 1. Aktuellen Termin als erledigt markieren
-      await supabase.from('ausfuehrung').update({
-        'erledigt': true,
-        'ausgefuehrt_am': nun.toIso8601String(),
-        'kennzeichen': bereinigtesKfz,
-      }).eq('id', ausfuehrung['id']);
+      await supabase
+          .from('ausfuehrung')
+          .update({
+            'erledigt': true,
+            'ausgefuehrt_am': nun.toIso8601String(),
+            'kennzeichen': bereinigtesKfz,
+            'lat': lat,
+            'lng': lng,
+            'accuracy': accuracy,
+          })
+          .eq('id', ausfuehrung['id']);
 
       // 2. Alle zukünftigen offenen Termine löschen
       await supabase
@@ -148,11 +174,13 @@ class GiesAppLogik {
           .toSet();
 
       // 4. Saison neu berechnen
-      final int intervall = ausfuehrung['massnahmen']?['taetigkeiten']?['intervall_tage'] ?? 7;
+      final int intervall =
+          ausfuehrung['massnahmen']?['taetigkeiten']?['intervall_tage'] ?? 7;
       List<Map<String, dynamic>> neueTermine = [];
       DateTime naechsterCheck = nun.add(Duration(days: intervall));
 
-      while (naechsterCheck.isBefore(saisonEnde) || naechsterCheck.isAtSameMomentAs(saisonEnde)) {
+      while (naechsterCheck.isBefore(saisonEnde) ||
+          naechsterCheck.isAtSameMomentAs(saisonEnde)) {
         final datumStr = DateFormat('yyyy-MM-dd').format(naechsterCheck);
         if (!vorhandeneDaten.contains(datumStr)) {
           neueTermine.add({
@@ -171,8 +199,9 @@ class GiesAppLogik {
       }
 
       debugPrint("🧹 Saison für Maßnahme $massnahmeId bereinigt.");
-      debugPrint("🚀 ${neueTermine.length} neue Termine bis 30.11. (Intervall: $intervall Tage) erstellt.");
-
+      debugPrint(
+        "🚀 ${neueTermine.length} neue Termine bis 30.11. (Intervall: $intervall Tage) erstellt.",
+      );
     } catch (e) {
       debugPrint("❌ Kritischer Fehler in erledigenUndPlanen: $e");
       throw "Fehler beim Re-Kalibrieren der Saison: $e";
@@ -181,10 +210,10 @@ class GiesAppLogik {
 
   /// Einzelnen Termin auf offen setzen
   static Future<void> setzeAufOffen(dynamic ausfuehrung) async {
-    await supabase.from('ausfuehrung').update({
-      'erledigt': false,
-      'ausgefuehrt_am': null,
-    }).eq('id', ausfuehrung['id']);
+    await supabase
+        .from('ausfuehrung')
+        .update({'erledigt': false, 'ausgefuehrt_am': null})
+        .eq('id', ausfuehrung['id']);
   }
 
   /// Berechnet die aktuelle Kalenderwoche nach ISO-Standard
@@ -212,10 +241,10 @@ class GiesAppLogik {
           .gt('geplant_am', DateTime.now().toIso8601String());
 
       // 2. Aktuellen Termin wieder auf offen setzen
-      await supabase.from('ausfuehrung').update({
-        'erledigt': false,
-        'ausgefuehrt_am': null,
-      }).eq('id', ausfuehrung['id']);
+      await supabase
+          .from('ausfuehrung')
+          .update({'erledigt': false, 'ausgefuehrt_am': null})
+          .eq('id', ausfuehrung['id']);
 
       // 3. Letzten erledigten Termin suchen
       final letzteErledigtRes = await supabase
@@ -230,7 +259,8 @@ class GiesAppLogik {
 
       // 4. Startpunkt bestimmen
       DateTime basisDatum;
-      if (letzteErledigtRes != null && letzteErledigtRes['ausgefuehrt_am'] != null) {
+      if (letzteErledigtRes != null &&
+          letzteErledigtRes['ausgefuehrt_am'] != null) {
         basisDatum = DateTime.parse(letzteErledigtRes['ausgefuehrt_am']);
       } else {
         basisDatum = DateTime.parse(ausfuehrung['geplant_am']);
@@ -247,7 +277,8 @@ class GiesAppLogik {
           .toSet();
 
       // 6. Kette wiederherstellen
-      final int intervall = ausfuehrung['massnahmen']?['taetigkeiten']?['intervall_tage'] ?? 7;
+      final int intervall =
+          ausfuehrung['massnahmen']?['taetigkeiten']?['intervall_tage'] ?? 7;
       List<Map<String, dynamic>> wiederhergestellteTermine = [];
       DateTime naechsterCheck = basisDatum.add(Duration(days: intervall));
 
@@ -273,7 +304,9 @@ class GiesAppLogik {
         await supabase.from('ausfuehrung').insert(wiederhergestellteTermine);
       }
 
-      debugPrint("🔄 Rollback erfolgreich: Kette ab $basisDatum wiederhergestellt.");
+      debugPrint(
+        "🔄 Rollback erfolgreich: Kette ab $basisDatum wiederhergestellt.",
+      );
     } catch (e) {
       debugPrint("❌ Fehler beim Reset: $e");
       throw "Reset fehlgeschlagen: $e";

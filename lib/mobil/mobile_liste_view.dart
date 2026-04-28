@@ -6,7 +6,6 @@ import 'package:intl/intl.dart';
 class MobileTourListeView extends StatefulWidget {
   final int selectedKW;
   final String? selectedKFZ;
-  final VoidCallback? onJumpToScanner;
   final ValueChanged<int>? onCountChanged;
   final VoidCallback? onOfflineVorgangGespeichert;
 
@@ -14,7 +13,6 @@ class MobileTourListeView extends StatefulWidget {
     super.key,
     required this.selectedKW,
     this.selectedKFZ,
-    this.onJumpToScanner,
     this.onCountChanged,
     this.onOfflineVorgangGespeichert,
   });
@@ -181,22 +179,6 @@ class _MobileTourListeViewState extends State<MobileTourListeView> {
                   onPressed: () { Navigator.pop(ctx); _updateStatus(item, true); },
                   icon: const Icon(Icons.check_circle_outline),
                   label: Text("JETZT ERLEDIGEN", style: TextStyle(fontSize: w * 0.04, fontWeight: FontWeight.bold)),
-                ),
-              ),
-              SizedBox(height: h * 0.015),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(vertical: h * 0.022),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    if (widget.onJumpToScanner != null) widget.onJumpToScanner!();
-                  },
-                  icon: const Icon(Icons.qr_code_scanner),
-                  label: Text("SCANNER ÖFFNEN", style: TextStyle(fontSize: w * 0.04)),
                 ),
               ),
             ] else ...[
