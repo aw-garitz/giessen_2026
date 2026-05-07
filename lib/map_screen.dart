@@ -46,7 +46,8 @@ class _MapScreenState extends State<MapScreen> {
       final data = await supabase
           .from('orte')
           .select('id, beschreibung_genau, latitude, longitude, massnahmen!inner(*), ausfuehrung(*)')
-          .eq('massnahmen.kennzeichen', kennzeichen);
+          .eq('massnahmen.kennzeichen', kennzeichen)
+          .eq('massnahmen.beendet', false);
 
       setState(() {
         _orte = data;

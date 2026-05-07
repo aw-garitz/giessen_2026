@@ -44,11 +44,13 @@ class _FahrzeugTourScreenState extends State<FahrzeugTourScreen> {
       *,
       massnahmen!inner(
         kennzeichen,
+        beendet,
         orte(name, strasse, latitude, longitude)
       )
     ''')
     .eq('erledigt', false)
     .eq('massnahmen.kennzeichen', kz) // Hier greift der Filter auf die verknüpfte Tabelle
+    .eq('massnahmen.beendet', false)
     .order('geplant_am', ascending: true);
 
       setState(() {

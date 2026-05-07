@@ -29,6 +29,7 @@ class GiesAppLogik {
         lat, lng, accuracy,
         massnahmen (
           id,
+          beendet,
           auftragsnummer,
           orte (
             id, beschreibung_genau, hausnummer, latitude, longitude,
@@ -172,6 +173,14 @@ class GiesAppLogik {
       final Set<String> vorhandeneDaten = (bereitsVorhanden as List)
           .map((e) => e['geplant_am'].toString().substring(0, 10))
           .toSet();
+
+      // Prüfen, ob die Maßnahme generell beendet wurde.
+      // Wenn ja, planen wir keine neuen Termine.
+      final bool isBeendet = ausfuehrung['massnahmen']?['beendet'] ?? false;
+      if (isBeendet) {
+        debugPrint("🛑 Maßnahme $massnahmeId ist als beendet markiert. Keine Neuplanung.");
+        return;
+      }
 
       // 4. Saison neu berechnen
       final int intervall =

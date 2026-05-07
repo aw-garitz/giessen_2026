@@ -115,6 +115,7 @@ class _MassnahmenViewState extends State<MassnahmenView> {
     dynamic selectedOrtId = item?['ort_id'];
     dynamic selectedTaetigkeitId = item?['taetigkeit_id'];
     String? selectedKennzeichen = item?['kennzeichen'];
+    bool beendet = item?['beendet'] ?? false;
 
     DateTime selectedDate = item != null
         ? DateTime.parse(item['start_datum'])
@@ -216,6 +217,16 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                     suffixIcon: Icon(Icons.assignment),
                   ),
                 ),
+                const SizedBox(height: 10),
+                SwitchListTile(
+                  title: const Text("Maßnahme beendet"),
+                  subtitle: const Text(
+                    "Deaktiviert die Planung und blendet die Tour für Fahrer aus.",
+                  ),
+                  value: beendet,
+                  activeColor: Colors.red,
+                  onChanged: (val) => setDS(() => beendet = val),
+                ),
               ],
             ),
           ),
@@ -239,6 +250,7 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                     'ort_id': selectedOrtId,
                     'taetigkeit_id': selectedTaetigkeitId,
                     'kennzeichen': selectedKennzeichen,
+                    'beendet': beendet,
                     'start_datum': DateFormat(
                       'yyyy-MM-dd',
                     ).format(selectedDate),
@@ -270,14 +282,23 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                     mId = res['id'].toString();
                   }
 
-                  // Saison über zentrale Logik planen (löscht offene Termine und plant neu)
-                  await GiesAppLogik.planeSaison(
-                    massnahmeId: mId,
-                    startDatum: selectedDate,
-                    intervall: intervall,
-                    kennzeichen: selectedKennzeichen,
-                    loescheOffene: true,
-                  );
+                  if (beendet) {
+                    // Wenn beendet, löschen wir nur noch alle offenen Termine
+                    await supabase
+                        .from('ausfuehrung')
+                        .delete()
+                        .eq('massnahme_id', mId)
+                        .eq('erledigt', false);
+                  } else {
+                    // Wenn aktiv (oder wiedererweckt), planen wir die Saison neu
+                    await GiesAppLogik.planeSaison(
+                      massnahmeId: mId,
+                      startDatum: selectedDate,
+                      intervall: intervall,
+                      kennzeichen: selectedKennzeichen,
+                      loescheOffene: true,
+                    );
+                  }
 
                   if (mounted) {
                     Navigator.of(ctx).pop();
@@ -395,6 +416,7 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                     itemBuilder: (ctx, i) {
                       final m = _filteredMassnahmen[i];
                       final ort = m['orte'];
+                      final bool beendet = m['beendet'] ?? false;
 
                       final bool istEingeplant = m['end_datum'] != null;
                       final bool hatRealesEnde = m['reales_end_datum'] != null;
@@ -412,13 +434,24 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                           horizontal: 16,
                           vertical: 4,
                         ),
+                        color: beendet ? Colors.grey.shade100 : null,
                         child: ListTile(
                           leading: Icon(
-                            Icons.park,
-                            color: istEingeplant ? Colors.green : Colors.grey,
+                            beendet ? Icons.block : Icons.park,
+                            color: beendet
+                                ? Colors.grey
+                                : (istEingeplant ? Colors.green : Colors.grey),
                             size: 35,
                           ),
-                          title: Text(displayFullOrt),
+                          title: Text(
+                            displayFullOrt,
+                            style: TextStyle(
+                              color: beendet ? Colors.grey : Colors.black,
+                              decoration: beendet
+                                  ? TextDecoration.lineThrough
+                                  : TextDecoration.none,
+                            ),
+                          ),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -439,12 +472,15 @@ class _MassnahmenViewState extends State<MassnahmenView> {
                                   ),
                                 ),
                               Text(
-                                hatRealesEnde
-                                    ? "Abschluss: ${DateFormat('dd.MM.yyyy').format(DateTime.parse(m['reales_end_datum']))}"
-                                    : "kein Ende festgelegt",
-                                style: const TextStyle(
+                                beendet
+                                    ? "STATUS: BEENDET"
+                                    : (hatRealesEnde
+                                        ? "Abschluss: ${DateFormat('dd.MM.yyyy').format(DateTime.parse(m['reales_end_datum']))}"
+                                        : "kein Ende festgelegt"),
+                                style: TextStyle(
                                   fontSize: 11,
-                                  color: Colors.black54,
+                                  color: beendet ? Colors.red : Colors.black54,
+                                  fontWeight: beendet ? FontWeight.bold : FontWeight.normal,
                                 ),
                               ),
                             ],
